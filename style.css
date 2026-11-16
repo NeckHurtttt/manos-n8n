@@ -110,3 +110,7 @@ h3 { font-size: 1rem; color: var(--muted); margin-top: 1.25rem; }
 
 .pie { text-align: center; color: var(--muted); font-size: .82rem; padding: 1rem 16px 1.5rem; }
 @media (max-width: 520px) { .barra { grid-template-columns: 6.5rem 1fr 2.6rem; } .tabs button { padding: .4rem .6rem; } h1 { font-size: 1.35rem; } }
+
+.idioma { display: flex; align-items: center; gap: .35rem; margin-left: auto; }
+.idioma select { font: inherit; font-weight: 700; padding: .45rem .6rem; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+@media (max-width: 860px) { .idioma { margin-left: 0; } }

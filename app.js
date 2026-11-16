@@ -1,5 +1,6 @@
 import { FilesetResolver, HandLandmarker, PoseLandmarker, DrawingUtils } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 import { frameFeat, resample, hasHand, train, predict, matchSigns, WIN_MS, REPOSO, D } from './ml.js';
+import { IDIOMAS, traducir, alias } from './idiomas.js';
 
 const $ = s => document.querySelector(s);
 const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
@@ -9,7 +10,13 @@ const POSE_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmar
 const DEFAULT_VOCAB = [REPOSO, 'hola', 'gracias', 'por favor', 'sí', 'no', 'no entiendo', 'repita', 'más despacio',
   'pregunta', 'ayuda', 'baño', 'dolor', 'agua', 'médico', 'emergencia', 'profesor', 'terminé', 'tarea', 'examen',
   'escribir', 'leer', 'bien', 'mal', 'perdón', 'qué', 'cómo', 'dónde', 'nombre', 'mamá', 'papá'];
-const RAPIDAS = ['No entiendo', 'Puede repetir, por favor', 'Más despacio, por favor', 'Necesito ir al baño', 'Tengo una pregunta', 'Terminé', 'Me siento mal', 'Gracias'];
+const RAPIDAS = ['no entiendo', 'repita', 'más despacio', 'baño', 'pregunta', 'terminé', 'dolor', 'ayuda', 'gracias'];
+
+// ---------- Idioma ----------
+let lang = 'es';
+try { lang = localStorage.getItem('mqh-idioma') || 'es'; } catch {}
+if (!IDIOMAS[lang]) lang = 'es';
+const tr = w => traducir(w, lang);
 
 // ---------- Guardado local (IndexedDB, con respaldo en memoria) ----------
 const DB = await new Promise(res => {
@@ -139,29 +146,39 @@ function showBars(r) {
 function addWord(w) {
   sentence.push(w);
   renderSentence();
-  if ($('#autoVoz').checked) speak(w);
+  if ($('#autoVoz').checked) speak(tr(w));
   if (navigator.vibrate) navigator.vibrate(30);
 }
 function renderSentence() {
-  $('#frase').innerHTML = sentence.length ? sentence.map(w => `<span class="w">${esc(w)}</span>`).join('') : '<span class="ph">Las señas reconocidas aparecen aquí…</span>';
+  const f = $('#frase');
+  f.dir = IDIOMAS[lang].rtl ? 'rtl' : 'ltr';
+  f.innerHTML = sentence.length ? sentence.map(w => `<span class="w" title="${esc(w)}">${esc(tr(w))}</span>`).join('') : '<span class="ph">Las señas reconocidas aparecen aquí…</span>';
 }
-$('#btnHablar').onclick = () => sentence.length && speak(sentence.join(' '));
+$('#btnHablar').onclick = () => sentence.length && speak(sentence.map(tr).join(' '));
 $('#btnDeshacer').onclick = () => { sentence.pop(); renderSentence(); };
 $('#btnBorrar').onclick = () => { sentence = []; renderSentence(); };
 $('#umbral').oninput = e => { umbral = e.target.value / 100; $('#umbralTxt').textContent = e.target.value + ' %'; };
-$('#rapidas').innerHTML = RAPIDAS.map(t => `<button>${esc(t)}</button>`).join('');
-$('#rapidas').onclick = e => { if (e.target.tagName === 'BUTTON') { sentence.push(e.target.textContent); renderSentence(); speak(e.target.textContent); } };
+function renderRapidas() { $('#rapidas').innerHTML = RAPIDAS.map(t => `<button data-w="${esc(t)}">${esc(tr(t))}</button>`).join(''); }
+$('#rapidas').onclick = e => { const w = e.target.dataset?.w; if (w) { sentence.push(w); renderSentence(); speak(tr(w)); } };
 
 let voz = null;
 function pickVoice() {
   const vs = speechSynthesis.getVoices();
-  voz = vs.find(v => /es[-_](BO|419|MX|US|AR|CL|PE|CO)/i.test(v.lang)) || vs.find(v => /^es/i.test(v.lang)) || null;
+  const es = vs.find(v => /es[-_](BO|419|MX|US|AR|CL|PE|CO)/i.test(v.lang)) || vs.find(v => /^es/i.test(v.lang)) || null;
+  const code = IDIOMAS[lang].voz;
+  // Quechua, aymara y guaraní no tienen voz en los navegadores: se leen con voz en castellano.
+  voz = code ? (vs.find(v => v.lang.toLowerCase().startsWith(code)) || null) : es;
+  const aviso = $('#avisoIdioma');
+  if (aviso) aviso.textContent = [
+    IDIOMAS[lang].validar ? '⚠ Traducción en borrador: valídala con un hablante.' : '',
+    !IDIOMAS[lang].voz ? 'Se lee con voz en castellano.' : (code && !voz && vs.length ? 'Este equipo no tiene voz en este idioma.' : ''),
+  ].filter(Boolean).join(' ');
 }
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 function speak(t) {
   if (!('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(t);
-  u.lang = voz?.lang || 'es-ES'; if (voz) u.voice = voz; u.rate = 0.95;
+  u.lang = voz?.lang || (IDIOMAS[lang].voz === 'en' ? 'en-US' : IDIOMAS[lang].voz === 'he' ? 'he-IL' : 'es-ES'); if (voz) u.voice = voz; u.rate = 0.95;
   speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
 
@@ -175,7 +192,7 @@ $('#btnEscuchar').onclick = () => {
   if (!SR) return;
   if (escuchando) { escuchando = false; rec.stop(); return; }
   rec = new SR();
-  rec.lang = 'es-BO'; rec.continuous = true; rec.interimResults = true;
+  rec.lang = IDIOMAS[lang].sr || 'es-BO'; rec.continuous = true; rec.interimResults = true;
   rec.onresult = e => {
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -198,7 +215,7 @@ $('#formTexto').onsubmit = e => {
 };
 
 function showSigns(text) {
-  const m = matchSigns(text, vocab);
+  const m = matchSigns(text, vocab, alias(lang));
   $('#fichas').innerHTML = m.map((x, i) => `<span class="ficha ${x.label && clips.has(x.label) ? 'si' : ''}" data-i="${i}" title="${x.label ? (clips.has(x.label) ? 'tiene video' : 'seña sin video grabado') : 'no está en el vocabulario'}">${esc(x.text)}</span>`).join('');
   m.forEach((x, i) => { if (x.label && clips.has(x.label)) queue.push({ label: x.label, i }); });
   if (!playing) playNext();
@@ -214,7 +231,7 @@ async function playNext() {
   document.querySelector(`.ficha[data-i="${item.i}"]`)?.classList.add('ahora');
   if (clip.src) URL.revokeObjectURL(clip.src);
   clip.src = URL.createObjectURL(blob);
-  $('#clipLabel').textContent = item.label;
+  $('#clipLabel').textContent = tr(item.label);
   clip.playbackRate = 1;
   clip.onended = clip.onerror = () => setTimeout(playNext, 150);
   clip.play().catch(() => setTimeout(playNext, 150));
@@ -387,5 +404,16 @@ document.querySelector('.tabs').onclick = e => {
 
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+const sel = $('#idioma');
+sel.innerHTML = Object.entries(IDIOMAS).map(([k, v]) => `<option value="${k}">${esc(v.nombre)}${v.validar ? ' (borrador)' : ''}</option>`).join('');
+sel.value = lang;
+sel.onchange = () => {
+  lang = sel.value;
+  try { localStorage.setItem('mqh-idioma', lang); } catch {}
+  pickVoice(); renderSentence(); renderRapidas();
+  $('#subtitulo').dir = IDIOMAS[lang].rtl ? 'rtl' : 'ltr';
+  if (escuchando) { escuchando = false; rec.stop(); }
+};
+renderRapidas(); pickVoice();
 renderSenas(); renderModelo(); renderSentence();
 setEstado($('#estadoModelo'), describeModel());

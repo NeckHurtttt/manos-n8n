@@ -189,8 +189,9 @@ export const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''
   .replace(/[¿?¡!.,;:"'()«»\-]/g, ' ').replace(/\s+/g, ' ').trim();
 
 // Busca primero las frases más largas del vocabulario (hasta 4 palabras).
-export function matchSigns(text, vocab) {
+export function matchSigns(text, vocab, alias = []) {
   const map = new Map(vocab.filter(v => v !== REPOSO).map(v => [norm(v), v]));
+  for (const [frase, label] of alias) if (vocab.includes(label) && !map.has(norm(frase))) map.set(norm(frase), label);
   const w = norm(text).split(' ').filter(Boolean), out = [];
   for (let i = 0; i < w.length;) {
     let hit = null;

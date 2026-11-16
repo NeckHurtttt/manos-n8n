@@ -19,6 +19,7 @@
       <p class="lema">Lengua de Señas Boliviana ↔ voz, en el aula</p>
     </div>
   </div>
+  <label class="idioma">🌐 <select id="idioma" aria-label="Idioma de salida"></select></label>
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="clase" aria-selected="true">Alumno <small>señas → voz</small></button>
     <button role="tab" data-tab="profe">Profesor <small>voz → señas</small></button>
@@ -64,6 +65,7 @@
       <label><input type="checkbox" id="autoVoz" checked> Decir cada seña al reconocerla</label>
       <label>Seguridad mínima <input type="range" id="umbral" min="50" max="95" value="75"> <output id="umbralTxt">75 %</output></label>
     </div>
+    <p class="estado" id="avisoIdioma"></p>
     <h3>Frases rápidas</h3>
     <div class="rapidas" id="rapidas"></div>
   </section>
