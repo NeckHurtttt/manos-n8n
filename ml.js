@@ -180,7 +180,13 @@ export async function train(samples, order, onProgress = () => {}, { epochs = 40
     onProgress(last);
     await new Promise(r => setTimeout(r, 0));
   }
-  m.stats = { ...last, n: data.length, at: Date.now() };
+  // Acierto por seña (en validación si hay; si no, en entrenamiento).
+  const porSena = {}, evalSet = val.length ? val : tr;
+  for (const l of labels) {
+    const xs = evalSet.filter(s => s.label === l);
+    porSena[l] = { n: data.filter(s => s.label === l).length, acc: xs.length ? xs.filter(s => predict(m, s.x)[0].label === l).length / xs.length : null };
+  }
+  m.stats = { ...last, n: data.length, at: Date.now(), porSena };
   // Movimiento típico de cada seña (la muestra más «central»): lo usa el avatar.
   m.protos = {};
   for (const l of labels) if (l !== REPOSO) m.protos[l] = medoid(data.filter(s => s.label === l).map(s => s.x));

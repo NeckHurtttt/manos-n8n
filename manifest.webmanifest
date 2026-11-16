@@ -1,0 +1,12 @@
+{
+  "name": "Manos que hablan",
+  "short_name": "Manos",
+  "description": "Traductor en vivo de Lengua de Señas Boliviana ⇄ voz",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#060a13",
+  "theme_color": "#060a13",
+  "lang": "es",
+  "icons": [{ "src": "icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

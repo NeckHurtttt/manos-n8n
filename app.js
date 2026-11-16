@@ -1,87 +1,115 @@
-import { FilesetResolver, HandLandmarker, PoseLandmarker, DrawingUtils } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+import { FilesetResolver, HandLandmarker, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 import { frameFeat, resample, hasHand, train, predict, matchSigns, WIN_MS, REPOSO, D } from './ml.js';
-import { IDIOMAS, traducir, alias } from './idiomas.js';
+import { IDIOMAS, TRAD, traducir, alias } from './idiomas.js';
 import { Avatar } from './avatar.js';
 import { crearStore, f32ToB64, b64ToF32 } from './store.js';
 
-const $ = s => document.querySelector(s);
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
 const HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const POSE_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+const HAND_CONN = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+const META = 20;            // muestras recomendadas por seña
+const MINIMO = 15;          // muestras para considerarla lista
 
 const DEFAULT_VOCAB = [REPOSO, 'hola', 'gracias', 'por favor', 'sí', 'no', 'no entiendo', 'repita', 'más despacio',
   'pregunta', 'ayuda', 'baño', 'dolor', 'agua', 'médico', 'emergencia', 'profesor', 'terminé', 'tarea', 'examen',
   'escribir', 'leer', 'bien', 'mal', 'perdón', 'qué', 'cómo', 'dónde', 'nombre', 'mamá', 'papá'];
 const RAPIDAS = ['no entiendo', 'repita', 'más despacio', 'baño', 'pregunta', 'terminé', 'dolor', 'ayuda', 'gracias'];
 
+// ---------- Utilidades de interfaz ----------
+function toast(msg, tipo = '', ms = 3200) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + tipo; t.textContent = msg;
+  $('#toasts').append(t);
+  setTimeout(() => t.remove(), ms);
+}
+function chip(id, s, texto) { const c = $(id); c.dataset.s = s; if (texto != null) c.lastElementChild.textContent = texto; }
+function nota(el, txt, cls = '') { el.textContent = txt; el.classList.remove('ok', 'error'); if (cls) el.classList.add(cls); }
+const guardarPref = (k, v) => { try { localStorage.setItem('mqh-' + k, v); } catch {} };
+const leerPref = (k, d) => { try { return localStorage.getItem('mqh-' + k) ?? d; } catch { return d; } };
+
 // ---------- Idioma ----------
-let lang = 'es';
-try { lang = localStorage.getItem('mqh-idioma') || 'es'; } catch {}
+let lang = leerPref('idioma', 'es');
 if (!IDIOMAS[lang]) lang = 'es';
 const tr = w => traducir(w, lang);
 
-// ---------- Datos: nube compartida (Supabase) o este navegador ----------
-const setEstado = (el, txt, cls = '') => { el.textContent = txt; el.classList.remove('ok', 'error'); if (cls) el.classList.add(cls); };
+// ---------- Datos ----------
 const store = await crearStore(DEFAULT_VOCAB);
 let vocab = DEFAULT_VOCAB.slice(), samples = [], model = null, clips = new Set(), muestrasCargadas = false;
-let selected = 'hola', tab = 'clase';
+let selected = 'hola', vista = 'vivo', modeloViejo = false;
 const count = l => samples.reduce((n, s) => n + (s.label === l), 0);
 
 async function cargarTodo() {
-  const est = $('#estadoNube');
+  chip('#chipNube', 'wait', store.modo === 'nube' ? 'conectando…' : 'local');
   try {
-    setEstado(est, store.modo === 'nube' ? 'Conectando con las señas del equipo…' : '');
     [vocab, model, clips] = await Promise.all([store.cargarVocab(), store.cargarModelo(), store.listaVideos().then(l => new Set(l))]);
     if (!vocab.includes(REPOSO)) vocab.unshift(REPOSO);
     if (!vocab.includes(selected)) selected = vocab.find(v => v !== REPOSO) || REPOSO;
-    setEstado(est, store.modo === 'nube' ? '☁️ Conectado a las señas del equipo. ' + describeModel() : '💾 Modo local: los datos quedan solo en este navegador (falta configurar Supabase en config.js).', store.modo === 'nube' ? 'ok' : '');
-  } catch (e) { setEstado(est, 'No se pudo conectar con la nube: ' + e.message, 'error'); }
+    chip('#chipNube', 'on', store.modo === 'nube' ? 'nube del equipo' : 'este navegador');
+  } catch (e) {
+    chip('#chipNube', 'err', 'sin conexión');
+    toast('No se pudo conectar con la nube: ' + e.message, 'error', 6000);
+  }
   if (store.modo === 'local') await cargarMuestras();
-  renderSenas(); renderModelo(); setEstado($('#estadoModelo'), describeModel());
+  refrescarTodo();
 }
 async function cargarMuestras(forzar = false) {
   if (muestrasCargadas && !forzar) return;
   try { samples = await store.cargarMuestras(); muestrasCargadas = true; }
-  catch (e) { setEstado($('#estadoGrab'), 'No se cargaron las muestras: ' + e.message, 'error'); }
-  renderSenas();
+  catch (e) { toast('No se cargaron las muestras: ' + e.message, 'error'); }
+  renderSenas(); renderTabla(); renderChecklist();
 }
-function puedeEscribir(el) {
+function puedeEscribir() {
   if (store.puedeEscribir()) return true;
-  setEstado(el, 'Escribe la clave del equipo para grabar o cambiar datos. Sin clave, la app solo se usa.', 'error');
+  toast('Escribe la clave del equipo (pestaña Entrenar) para grabar o cambiar datos.', 'error', 4500);
+  irA('entrenar'); $('#clave')?.focus();
   return false;
 }
 
-// ---------- Cámara y MediaPipe ----------
+// ---------- Cámara (un solo elemento que se mueve entre vistas) ----------
+const camEl = $('#tplCam').content.firstElementChild.cloneNode(true);
+$('#slotCamVivo').append(camEl);
 const video = $('#video'), canvas = $('#overlay'), ctx = canvas.getContext('2d');
-let hands = null, pose = null, drawer = null, stream = null, running = false;
-const frames = []; // {t, f}
+let hands = null, pose = null, stream = null, running = false;
+const frames = [];
 let lastPose = null, frameNo = 0, lastVideoTime = -1;
+let fps = 0, fpsN = 0, fpsT = performance.now(), msInf = 0;
+let ultimaMano = 0, ultimaPalabra = 0;
+
+function moverCamara() {
+  const slot = $(vista === 'entrenar' ? '#slotCamEntrenar' : '#slotCamVivo');
+  if (camEl.parentElement !== slot) { slot.append(camEl); if (running) video.play().catch(() => {}); }
+}
 
 async function startCamera() {
   const btn = $('#btnCam'), est = $('#estadoCam');
-  btn.disabled = true;
+  btn.disabled = true; chip('#chipCam', 'wait', 'cargando');
   try {
-    setEstado(est, 'Cargando el modelo de manos…');
+    nota(est, 'cargando modelo de manos…');
     const fs = await FilesetResolver.forVisionTasks(WASM);
-    const opt = path => ({ baseOptions: { modelAssetPath: path, delegate: 'GPU' }, runningMode: 'VIDEO' });
+    const opt = (path, delegate = 'GPU') => ({ baseOptions: { modelAssetPath: path, delegate }, runningMode: 'VIDEO' });
     hands = await HandLandmarker.createFromOptions(fs, { ...opt(HAND_MODEL), numHands: 2, minHandDetectionConfidence: 0.5, minTrackingConfidence: 0.5 })
-      .catch(() => HandLandmarker.createFromOptions(fs, { ...opt(HAND_MODEL), baseOptions: { modelAssetPath: HAND_MODEL, delegate: 'CPU' }, numHands: 2 }));
-    setEstado(est, 'Cargando el modelo del cuerpo…');
+      .catch(() => HandLandmarker.createFromOptions(fs, { ...opt(HAND_MODEL, 'CPU'), numHands: 2 }));
+    nota(est, 'cargando modelo del cuerpo…');
     pose = await PoseLandmarker.createFromOptions(fs, opt(POSE_MODEL))
-      .catch(() => PoseLandmarker.createFromOptions(fs, { ...opt(POSE_MODEL), baseOptions: { modelAssetPath: POSE_MODEL, delegate: 'CPU' } }))
-      .catch(() => null);
-    setEstado(est, 'Pidiendo permiso para la cámara…');
+      .catch(() => PoseLandmarker.createFromOptions(fs, opt(POSE_MODEL, 'CPU'))).catch(() => null);
+    nota(est, 'esperando permiso de cámara…');
     stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 960 }, height: { ideal: 720 }, facingMode: 'user' }, audio: false });
     video.srcObject = stream;
     await video.play();
-    drawer = new DrawingUtils(ctx);
     $('#camVacia').hidden = true;
     running = true;
+    chip('#chipCam', 'on', 'cámara');
     requestAnimationFrame(loop);
+    renderChecklist();
   } catch (e) {
     console.error(e);
-    btn.disabled = false;
-    setEstado(est, location.protocol === 'file:' ? 'Abre la app con un servidor (ver LEEME.md): la cámara no funciona desde file://.' : 'No se pudo iniciar: ' + (e.message || e), 'error');
+    btn.disabled = false; chip('#chipCam', 'err', 'cámara');
+    nota(est, location.protocol === 'file:' ? 'Abre la app con un servidor: la cámara no funciona desde file://' : (e.name === 'NotAllowedError' ? 'Permiso de cámara denegado.' : 'No se pudo iniciar: ' + (e.message || e)), 'error');
   }
 }
 $('#btnCam').onclick = startCamera;
@@ -92,21 +120,53 @@ function loop() {
   if (video.readyState < 2 || video.currentTime === lastVideoTime) return;
   lastVideoTime = video.currentTime;
   const now = performance.now();
+  const t0 = performance.now();
   const hr = hands.detectForVideo(video, now);
   if (pose && (frameNo++ % 3 === 0 || !lastPose)) lastPose = pose.detectForVideo(video, now);
-  frames.push({ t: now, f: frameFeat(hr, lastPose) });
+  const f = frameFeat(hr, lastPose);
+  frames.push({ t: now, f });
   while (frames.length && frames[0].t < now - WIN_MS * 1.6) frames.shift();
+  if (hasHand(f)) ultimaMano = now;
   draw(hr);
-  if (tab === 'clase' && !capturing) recognize(now);
+  if (vista === 'vivo' && !capturing) recognize(now);
+  msInf = msInf * 0.9 + (performance.now() - t0) * 0.1;
+  fpsN++;
+  if (now - fpsT > 500) {
+    fps = fpsN * 1000 / (now - fpsT); fpsN = 0; fpsT = now;
+    const txt = `${fps.toFixed(0)} fps · ${msInf.toFixed(0)} ms`;
+    $('#hudFps').textContent = txt; $('#hudFps2').textContent = txt;
+  }
+  // Enviar la frase sola al bajar las manos
+  if (vista === 'vivo' && sentence.length && $('#autoEnviar').checked && now - ultimaMano > 2000 && now - ultimaPalabra > 2000) enviar();
 }
 
 function draw(hr) {
   if (canvas.width !== video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; }
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff7a3d';
+  const W = canvas.width, H = canvas.height, k = W / 640;
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineCap = ctx.lineJoin = 'round';
+  // Hombros y nariz (referencia del cuerpo)
+  const p = lastPose?.landmarks?.[0];
+  if (p) {
+    ctx.strokeStyle = 'rgba(167,139,250,.55)'; ctx.lineWidth = 2 * k; ctx.setLineDash([6 * k, 6 * k]);
+    ctx.beginPath(); ctx.moveTo(p[11].x * W, p[11].y * H); ctx.lineTo(p[12].x * W, p[12].y * H); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(167,139,250,.9)';
+    for (const i of [0, 11, 12]) { ctx.beginPath(); ctx.arc(p[i].x * W, p[i].y * H, 4 * k, 0, Math.PI * 2); ctx.fill(); }
+  }
   for (const lm of hr.landmarks) {
-    drawer.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS, { color, lineWidth: 4 });
-    drawer.drawLandmarks(lm, { color: '#fff', fillColor: color, radius: 4, lineWidth: 1 });
+    ctx.save();
+    ctx.shadowColor = '#22d3ee'; ctx.shadowBlur = 14 * k;
+    ctx.strokeStyle = 'rgba(34,211,238,.95)'; ctx.lineWidth = 3.2 * k;
+    ctx.beginPath();
+    for (const [a, b] of HAND_CONN) { ctx.moveTo(lm[a].x * W, lm[a].y * H); ctx.lineTo(lm[b].x * W, lm[b].y * H); }
+    ctx.stroke();
+    ctx.restore();
+    for (let j = 0; j < 21; j++) {
+      const r = (j % 4 === 0 && j) ? 5 : 3.2;
+      ctx.fillStyle = j % 4 === 0 && j ? '#a78bfa' : '#e6f1ff';
+      ctx.beginPath(); ctx.arc(lm[j].x * W, lm[j].y * H, r * k, 0, Math.PI * 2); ctx.fill();
+    }
   }
 }
 
@@ -116,144 +176,200 @@ function windowFrames(from, to) {
   return { x: resample(fr), present: fr.filter(x => hasHand(x.f)).length / fr.length };
 }
 
-// ---------- Reconocimiento (Alumno) ----------
+// ---------- Alumno: señas → palabras ----------
 const STABLE = 4;
-let stable = { label: null, n: 0 }, lastEmit = { label: null, t: 0 }, sentence = [];
-let bloqueada = null; // la última seña no se repite hasta soltarla (bajar la mano o hacer otra)
-let umbral = 0.75;
+let stable = { label: null, n: 0 }, lastEmit = 0, sentence = [], bloqueada = null;
+let umbral = Number(leerPref('umbral', 75)) / 100;
 
 function recognize(now) {
   if (!model) return;
   const w = windowFrames(now - WIN_MS, now);
-  if (!w) return; // pocos cuadros todavía (p. ej. justo después de reconocer una seña)
-  if (w.present < 0.6) { stable = { label: null, n: 0 }; bloqueada = null; showBars(null); return; }
+  if (!w) return;
+  if (w.present < 0.6) { stable = { label: null, n: 0 }; bloqueada = null; showPred(null); return; }
   const r = predict(model, w.x);
-  showBars(r);
+  showPred(r);
   const { label, p } = r[0];
   if (label === REPOSO) bloqueada = null;
   if (label === REPOSO || p < umbral) { stable = { label: null, n: 0 }; return; }
   if (bloqueada && label !== bloqueada) bloqueada = null;
   if (label === bloqueada) return;
   stable = stable.label === label ? { label, n: stable.n + 1 } : { label, n: 1 };
-  if (stable.n >= STABLE && now - lastEmit.t > 700) {
-    lastEmit = { label, t: now };
-    bloqueada = label;
-    stable = { label: null, n: 0 };
+  if (stable.n >= STABLE && now - lastEmit > 700) {
+    lastEmit = now; bloqueada = label; stable = { label: null, n: 0 };
     frames.length = 0;
     addWord(label);
   }
 }
 
-function showBars(r) {
-  const el = $('#barras');
-  if (!r) { el.innerHTML = model && running && tab === 'clase' ? '<p class="estado">Esperando manos…</p>' : ''; return; }
-  el.innerHTML = r.slice(0, 3).map(({ label, p }) =>
-    `<div class="barra"><span class="n">${esc(label)}</span><span class="b"><i style="width:${(p * 100).toFixed(0)}%"></i></span><span class="p">${(p * 100).toFixed(0)}%</span></div>`).join('');
+let ultimaBarra = 0;
+function showPred(r) {
+  const pred = $('#pred'), barras = $('#barras');
+  if (!r) {
+    pred.hidden = true;
+    barras.innerHTML = `<p class="vacio">${model ? (running ? '> esperando manos…' : '> cámara apagada') : '> sin modelo: entrena las señas primero'}</p>`;
+    return;
+  }
+  const top = r[0];
+  pred.hidden = top.label === REPOSO;
+  $('#predTxt').textContent = tr(top.label);
+  $('#predPct').textContent = (top.p * 100).toFixed(0) + ' % seguro';
+  $('#predAnillo').style.setProperty('--p', (top.p * 100).toFixed(0));
+  const now = performance.now();
+  if (now - ultimaBarra < 80) return;
+  ultimaBarra = now;
+  barras.innerHTML = r.slice(0, 3).map(({ label, p }) =>
+    `<div class="barra"><span class="n">${esc(label === REPOSO ? '· reposo ·' : tr(label))}</span><span class="b"><i style="width:${(p * 100).toFixed(0)}%"></i></span><span class="p">${(p * 100).toFixed(0)}%</span></div>`).join('');
 }
 
 function addWord(w) {
-  sentence.push(w);
+  sentence.push(w); ultimaPalabra = performance.now();
   renderSentence();
-  if ($('#autoVoz').checked) speak(tr(w));
+  const d = $('#destello'); d.textContent = tr(w); d.classList.remove('on'); void d.offsetWidth; d.classList.add('on');
+  if ($('#modoVoz').value === 'sena') speak(tr(w));
   if (navigator.vibrate) navigator.vibrate(30);
 }
 function renderSentence() {
   const f = $('#frase');
   f.dir = IDIOMAS[lang].rtl ? 'rtl' : 'ltr';
-  f.innerHTML = sentence.length ? sentence.map(w => `<span class="w" title="${esc(w)}">${esc(tr(w))}</span>`).join('') : '<span class="ph">Las señas reconocidas aparecen aquí…</span>';
+  f.innerHTML = sentence.length ? sentence.map(w => `<span class="w" title="${esc(w)}">${esc(tr(w))}</span>`).join('') : '<span class="ph">Haz una seña frente a la cámara…</span>';
 }
+function enviar() {
+  if (!sentence.length) return;
+  const palabras = sentence.slice();
+  sentence = []; renderSentence();
+  addMsg({ quien: 'alumno', palabras });
+  const modo = $('#modoVoz').value;
+  if (modo === 'frase' || (modo === 'sena' && palabras.length > 1)) speak(palabras.map(tr).join(' '));
+}
+$('#btnEnviar').onclick = enviar;
 $('#btnHablar').onclick = () => sentence.length && speak(sentence.map(tr).join(' '));
 $('#btnDeshacer').onclick = () => { sentence.pop(); renderSentence(); };
 $('#btnBorrar').onclick = () => { sentence = []; renderSentence(); };
-$('#umbral').oninput = e => { umbral = e.target.value / 100; $('#umbralTxt').textContent = e.target.value + ' %'; };
+$('#umbral').value = Math.round(umbral * 100);
+$('#umbralTxt').textContent = Math.round(umbral * 100) + ' %';
+$('#umbral').oninput = e => { umbral = e.target.value / 100; $('#umbralTxt').textContent = e.target.value + ' %'; guardarPref('umbral', e.target.value); };
+$('#modoVoz').value = leerPref('modoVoz', 'sena');
+$('#modoVoz').onchange = e => guardarPref('modoVoz', e.target.value);
+$('#autoEnviar').checked = leerPref('autoEnviar', '1') === '1';
+$('#autoEnviar').onchange = e => guardarPref('autoEnviar', e.target.checked ? '1' : '0');
 function renderRapidas() { $('#rapidas').innerHTML = RAPIDAS.map(t => `<button data-w="${esc(t)}">${esc(tr(t))}</button>`).join(''); }
-$('#rapidas').onclick = e => { const w = e.target.dataset?.w; if (w) { sentence.push(w); renderSentence(); speak(tr(w)); } };
+$('#rapidas').onclick = e => { const w = e.target.closest('button')?.dataset.w; if (w) { addMsg({ quien: 'alumno', palabras: [w] }); speak(tr(w)); } };
 
+// ---------- Voz ----------
 let voz = null;
 function pickVoice() {
+  if (!('speechSynthesis' in window)) return;
   const vs = speechSynthesis.getVoices();
   const es = vs.find(v => /es[-_](BO|419|MX|US|AR|CL|PE|CO)/i.test(v.lang)) || vs.find(v => /^es/i.test(v.lang)) || null;
   const code = IDIOMAS[lang].voz;
-  // Quechua, aymara y guaraní no tienen voz en los navegadores: se leen con voz en castellano.
   voz = code ? (vs.find(v => v.lang.toLowerCase().startsWith(code)) || null) : es;
-  const aviso = $('#avisoIdioma');
-  if (aviso) aviso.textContent = [
-    IDIOMAS[lang].validar ? '⚠ Traducción en borrador: valídala con un hablante.' : '',
-    !IDIOMAS[lang].voz ? 'Se lee con voz en castellano.' : (code && !voz && vs.length ? 'Este equipo no tiene voz en este idioma.' : ''),
-  ].filter(Boolean).join(' ');
 }
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 function speak(t) {
-  if (!('speechSynthesis' in window)) return;
+  if (!('speechSynthesis' in window) || !t) return;
   const u = new SpeechSynthesisUtterance(t);
-  u.lang = voz?.lang || (IDIOMAS[lang].voz === 'en' ? 'en-US' : IDIOMAS[lang].voz === 'he' ? 'he-IL' : 'es-ES'); if (voz) u.voice = voz; u.rate = 0.95;
+  u.lang = voz?.lang || ({ en: 'en-US', he: 'he-IL' }[IDIOMAS[lang].voz] || 'es-ES');
+  if (voz) u.voice = voz;
+  u.rate = 0.95;
   speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
 
-// ---------- Profesor: voz → subtítulos + señas ----------
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, escuchando = false, finalTxt = '';
-const clipCache = new Map();
+// ---------- Conversación ----------
+const chat = [];
+function addMsg(m) {
+  m.t = new Date(); m.idioma = lang;
+  chat.push(m);
+  $('#chatVacio').hidden = true;
+  $('#chat').insertAdjacentHTML('beforeend', htmlMsg(m, chat.length - 1));
+  const c = $('#chat'); c.scrollTop = c.scrollHeight;
+}
+function textoMsg(m) { return m.quien === 'alumno' ? m.palabras.map(tr).join(' ') : m.texto; }
+function htmlMsg(m, i, anim = true) {
+    const hora = m.t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const txt = textoMsg(m), rtl = m.quien === 'alumno' ? IDIOMAS[lang].rtl : IDIOMAS[m.idioma]?.rtl;
+    const orig = m.quien === 'alumno' && lang !== 'es' ? `<div class="orig">${esc(m.palabras.join(' '))}</div>` : '';
+    return `<li class="msg ${m.quien}${anim ? '' : ' quieto'}"><div class="quien">${m.quien === 'alumno' ? '🤟 Alumno · señas' : '🎙 Profesor · voz'}<time>${hora}</time><button class="repetir" data-i="${i}" title="${m.quien === 'alumno' ? 'Decir otra vez' : 'Repetir en señas'}">↻</button></div><div class="txt" dir="${rtl ? 'rtl' : 'ltr'}">${esc(txt)}</div>${orig}</li>`;
+}
+function renderChat() {
+  $('#chatVacio').hidden = chat.length > 0;
+  $('#chat').innerHTML = chat.map((m, i) => htmlMsg(m, i, false)).join('');
+  const c = $('#chat'); c.scrollTop = c.scrollHeight;
+}
+$('#chat').onclick = e => {
+  const i = e.target.closest('.repetir')?.dataset.i; if (i == null) return;
+  const m = chat[i];
+  if (m.quien === 'alumno') speak(textoMsg(m)); else showSigns(m.texto, false);
+};
+$('#btnLimpiarChat').onclick = () => { chat.length = 0; renderChat(); };
 
-if (!SR) setEstado($('#estadoVoz'), 'Este navegador no reconoce voz (usa Chrome o Edge). Puedes escribir la frase.', 'error');
-$('#btnEscuchar').onclick = () => {
-  if (!SR) return;
-  if (escuchando) { escuchando = false; rec.stop(); return; }
+// ---------- Profesor: voz → señas ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, escuchando = false;
+const clipCache = new Map();
+if (!SR) { $('#btnEscuchar').classList.add('no-disponible'); nota($('#estadoVoz'), 'Para hablar usa Chrome o Edge. Aquí puedes escribir la frase.'); }
+
+function pararMic() { escuchando = false; try { rec?.stop(); } catch {} $('#btnEscuchar').setAttribute('aria-pressed', 'false'); nota($('#estadoVoz'), ''); }
+function toggleMic() {
+  if (!SR) return toast('Este navegador no reconoce voz. Usa Chrome o Edge, o escribe la frase.', 'error', 4500);
+  if (escuchando) return pararMic();
   rec = new SR();
   rec.lang = IDIOMAS[lang].sr || 'es-BO'; rec.continuous = true; rec.interimResults = true;
   rec.onresult = e => {
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) { finalTxt = (finalTxt + ' ' + t).trim().split(' ').slice(-40).join(' '); showSigns(t); }
-      else interim += t;
+      const t = e.results[i][0].transcript.trim();
+      if (e.results[i].isFinal) { if (t) { addMsg({ quien: 'profesor', texto: t }); showSigns(t); } }
+      else interim += t + ' ';
     }
-    $('#subtitulo').innerHTML = esc(finalTxt) + (interim ? ` <span class="interino">${esc(interim)}</span>` : '') || '<span class="ph">Subtítulos en vivo</span>';
+    $('#subtitulo').innerHTML = interim ? `<span class="interino">${esc(interim)}</span>` : $('#subtitulo').innerHTML;
   };
-  rec.onerror = e => setEstado($('#estadoVoz'), 'Micrófono: ' + e.error, 'error');
-  rec.onend = () => { if (escuchando) { try { rec.start(); } catch {} } else { $('#btnEscuchar').textContent = '🎙️ Escuchar'; setEstado($('#estadoVoz'), ''); } };
-  rec.start(); escuchando = true;
-  $('#btnEscuchar').textContent = '⏹ Detener';
-  setEstado($('#estadoVoz'), 'Escuchando…', 'ok');
-};
+  rec.onerror = e => { if (e.error !== 'no-speech') { nota($('#estadoVoz'), 'Micrófono: ' + e.error, 'error'); if (e.error === 'not-allowed') pararMic(); } };
+  rec.onend = () => { if (escuchando) { try { rec.start(); } catch {} } };
+  try { rec.start(); } catch (e) { return toast('No se pudo usar el micrófono: ' + e.message, 'error'); }
+  escuchando = true;
+  $('#btnEscuchar').setAttribute('aria-pressed', 'true');
+  nota($('#estadoVoz'), `Escuchando en ${IDIOMAS[lang].sr ? IDIOMAS[lang].nombre : 'castellano'}…`, 'ok');
+}
+$('#btnEscuchar').onclick = toggleMic;
 $('#formTexto').onsubmit = e => {
   e.preventDefault();
   const t = $('#textoManual').value.trim(); if (!t) return;
-  finalTxt = t; $('#subtitulo').textContent = t; showSigns(t); $('#textoManual').value = '';
+  addMsg({ quien: 'profesor', texto: t });
+  showSigns(t); $('#textoManual').value = '';
 };
 
-// El avatar hace las señas; si además hay video real de esa seña, aparece en la esquina.
 const avatar = new Avatar($('#avatar'));
 const pendientes = [];
-let fichaBase = 0;
+let fichaBase = 0, actuales = [], idxSena = 0;
 const tieneSena = l => !!(model?.protos?.[l]);
-function showSigns(text) {
+function showSigns(text, conSubtitulo = true) {
   const m = matchSigns(text, vocab, alias(lang));
+  if (conSubtitulo) $('#subtitulo').textContent = text;
   const base = fichaBase; fichaBase += m.length;
-  const html = m.map((x, i) => `<span class="ficha ${x.label && tieneSena(x.label) ? 'si' : ''}" data-i="${base + i}" title="${x.label ? (tieneSena(x.label) ? 'el avatar la hace' : 'seña sin entrenar') : 'no está en el vocabulario'}">${esc(x.text)}</span>`).join('');
+  const html = m.map((x, i) => `<span class="ficha ${x.label && tieneSena(x.label) ? 'si' : ''}" data-i="${base + i}" title="${x.label ? (tieneSena(x.label) ? 'el avatar la hace' : 'seña sin entrenar') : 'sin seña en el vocabulario'}">${esc(x.text)}</span>`).join('');
   $('#fichas').innerHTML = (pendientes.length || avatar.tl ? $('#fichas').innerHTML : '') + html;
+  if (!model) { $('#hudAvatar').textContent = 'sin modelo entrenado'; return; }
   const signs = m.map((x, i) => ({ ...x, i: base + i })).filter(x => x.label && tieneSena(x.label)).map(x => ({ label: x.label, proto: model.protos[x.label], i: x.i }));
-  if (!model) setEstado($('#estadoVoz'), 'Todavía no hay modelo entrenado: el avatar no conoce señas.', 'error');
-  if (!signs.length) return;
+  if (!signs.length) { $('#hudAvatar').textContent = 'ninguna seña conocida'; return; }
   pendientes.push(signs);
   if (!avatar.tl) siguiente();
 }
-let actuales = [], idxSena = 0;
 function siguiente() {
   const lote = pendientes.shift();
-  if (!lote) { $('#clipLabel').textContent = ''; return; }
+  if (!lote) { $('#clipLabel').textContent = ''; $('#hudAvatar').textContent = 'avatar listo'; return; }
   actuales = lote; idxSena = 0;
   avatar.play(lote);
 }
 avatar.onSign = label => {
-  document.querySelectorAll('.ficha.ahora').forEach(f => f.classList.remove('ahora'));
+  $$('.ficha.ahora').forEach(f => f.classList.remove('ahora'));
   if (!label) { $('#clipLabel').textContent = ''; mostrarVideo(null); return; }
   const item = actuales[idxSena++];
-  if (item) document.querySelector(`.ficha[data-i="${item.i}"]`)?.classList.add('ahora');
+  if (item) $(`.ficha[data-i="${item.i}"]`)?.classList.add('ahora');
   $('#clipLabel').textContent = tr(label);
+  $('#hudAvatar').textContent = `seña ${idxSena}/${actuales.length}`;
   mostrarVideo(label);
 };
-avatar.onEnd = () => setTimeout(siguiente, 100);
+avatar.onEnd = () => setTimeout(siguiente, 120);
 async function mostrarVideo(label) {
   const clip = $('#clip');
   if (!label || !clips.has(label) || !$('#conVideoReal').checked) { clip.hidden = true; clip.pause(); return; }
@@ -267,55 +383,61 @@ async function mostrarVideo(label) {
 
 // ---------- Entrenar ----------
 let capturing = false;
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function countdown(n) {
   const c = $('#cuenta'); c.hidden = false;
   for (let i = n; i > 0; i--) { c.textContent = i; await sleep(650); }
   c.hidden = true;
 }
-function needCam() { if (running) return true; setEstado($('#estadoGrab'), 'Primero enciende la cámara.', 'error'); return false; }
+function needCam() {
+  if (running) return true;
+  toast('Primero enciende la cámara.', 'error');
+  return false;
+}
 function busy(b) { ['#btnUna', '#btnDiez', '#btnVideo', '#btnBorrarSena', '#btnEntrenar'].forEach(s => $(s).disabled = b); }
 
 async function grabar(n) {
-  if (!needCam() || !puedeEscribir($('#estadoGrab'))) return;
+  if (!needCam() || !puedeEscribir()) return;
   await cargarMuestras();
   busy(true); capturing = true;
   let ok = 0;
-  const nuevas = [];
+  const nuevas = [], est = $('#estadoGrab');
   try {
     for (let k = 0; k < n; k++) {
-      setEstado($('#estadoGrab'), `«${selected}»: muestra ${k + 1} de ${n}. Prepárate…`);
+      nota(est, `«${selected}» · muestra ${k + 1} de ${n} · prepárate…`);
       await countdown(k === 0 ? 3 : 2);
       $('#rec').hidden = false;
       const t0 = performance.now();
       await sleep(WIN_MS + 60);
       $('#rec').hidden = true;
       const w = windowFrames(t0, t0 + WIN_MS + 60);
-      if (!w) { setEstado($('#estadoGrab'), 'La cámara va lenta; no se guardó.', 'error'); await sleep(900); continue; }
-      if (selected !== REPOSO && w.present < 0.5) { setEstado($('#estadoGrab'), 'No vi las manos: muestra no guardada.', 'error'); await sleep(900); continue; }
+      if (!w) { nota(est, 'La cámara va lenta: muestra no guardada.', 'error'); await sleep(800); continue; }
+      if (selected !== REPOSO && w.present < 0.5) { nota(est, 'No vi las manos: muestra no guardada.', 'error'); await sleep(800); continue; }
       const s = { label: selected, x: w.x };
       samples.push(s); nuevas.push(s); ok++;
-      renderSenas();
-      await sleep(250);
+      renderSenas(); renderSel();
+      await sleep(200);
     }
-    if (nuevas.length) { setEstado($('#estadoGrab'), 'Guardando…'); await store.agregarMuestras(nuevas); }
-    setEstado($('#estadoGrab'), `Listo: ${ok} muestra(s) de «${selected}»${store.modo === 'nube' ? ' guardadas en la nube' : ''}. Total: ${count(selected)}.`, 'ok');
-    marcarModeloViejo();
+    if (nuevas.length) { nota(est, 'guardando…'); await store.agregarMuestras(nuevas); modeloViejo = true; }
+    nota(est, `✓ ${ok} muestra(s) de «${selected}»${store.modo === 'nube' ? ' en la nube' : ''}.`, 'ok');
   } catch (e) {
-    samples = samples.filter(s => !nuevas.includes(s)); renderSenas();
-    setEstado($('#estadoGrab'), 'No se guardó: ' + e.message, 'error');
-  } finally { capturing = false; busy(false); $('#cuenta').hidden = true; $('#rec').hidden = true; }
+    samples = samples.filter(s => !nuevas.includes(s));
+    nota(est, 'No se guardó: ' + e.message, 'error');
+  } finally {
+    capturing = false; busy(false); $('#cuenta').hidden = true; $('#rec').hidden = true;
+    renderSenas(); renderSel(); renderTabla(); renderChecklist();
+  }
 }
 $('#btnUna').onclick = () => grabar(1);
 $('#btnDiez').onclick = () => grabar(10);
 
 $('#btnVideo').onclick = async () => {
-  if (!needCam() || !puedeEscribir($('#estadoGrab'))) return;
-  if (selected === REPOSO) return setEstado($('#estadoGrab'), '«reposo» no necesita video.', 'error');
-  if (!window.MediaRecorder) return setEstado($('#estadoGrab'), 'Este navegador no puede grabar video.', 'error');
+  if (!needCam() || !puedeEscribir()) return;
+  if (selected === REPOSO) return toast('«reposo» no necesita video.');
+  if (!window.MediaRecorder) return toast('Este navegador no puede grabar video.', 'error');
+  const est = $('#estadoGrab');
   busy(true);
   try {
-    setEstado($('#estadoGrab'), `Video de «${selected}»: haz la seña clara, una vez.`);
+    nota(est, `Video de «${selected}»: haz la seña clara, una vez.`);
     await countdown(3);
     const type = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4'].find(t => MediaRecorder.isTypeSupported(t));
     const mr = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 1_200_000 } : undefined);
@@ -323,94 +445,161 @@ $('#btnVideo').onclick = async () => {
     const done = new Promise(r => mr.onstop = r);
     $('#rec').hidden = false; mr.start(); await sleep(2200); mr.stop(); await done; $('#rec').hidden = true;
     const blob = new Blob(parts, { type: mr.mimeType || 'video/webm' });
-    setEstado($('#estadoGrab'), 'Subiendo video…');
+    nota(est, 'subiendo video…');
     await store.guardarVideo(selected, blob);
     clips.add(selected); clipCache.set(selected, blob);
-    renderSenas();
-    setEstado($('#estadoGrab'), `Video de «${selected}» guardado. Se verá en el modo Profesor.`, 'ok');
-  } catch (e) { setEstado($('#estadoGrab'), 'No se pudo grabar: ' + e.message, 'error'); }
-  finally { busy(false); $('#rec').hidden = true; }
+    nota(est, `✓ Video de «${selected}» guardado.`, 'ok');
+  } catch (e) { nota(est, 'No se pudo grabar: ' + e.message, 'error'); }
+  finally { busy(false); $('#rec').hidden = true; renderSenas(); renderTabla(); renderChecklist(); }
 };
 
 $('#btnBorrarSena').onclick = async () => {
-  if (!puedeEscribir($('#estadoGrab'))) return;
+  if (!puedeEscribir()) return;
   await cargarMuestras();
   const n = count(selected);
-  if (!n || !confirm(`¿Borrar las ${n} muestras de «${selected}» para todo el equipo?`)) return;
+  if (!n) return toast(`«${selected}» no tiene muestras.`);
+  if (!confirm(`¿Borrar las ${n} muestras de «${selected}» para todo el equipo?`)) return;
   try {
     await store.borrarMuestras(selected);
-    samples = samples.filter(s => s.label !== selected);
-    renderSenas(); marcarModeloViejo();
-    setEstado($('#estadoGrab'), `Muestras de «${selected}» borradas.`);
-  } catch (e) { setEstado($('#estadoGrab'), e.message, 'error'); }
+    samples = samples.filter(s => s.label !== selected); modeloViejo = true;
+    toast(`Muestras de «${selected}» borradas.`);
+  } catch (e) { toast(e.message, 'error'); }
+  renderSenas(); renderSel(); renderTabla(); renderChecklist();
 };
+
+const curva = { loss: [], acc: [], vacc: [] };
+function dibujarCurva() {
+  const c = $('#curva'), r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  if (!r.width) return;
+  c.width = r.width * dpr; c.height = r.height * dpr;
+  const x = c.getContext('2d'); x.scale(dpr, dpr);
+  const W = r.width, H = r.height, P = 10, TOP = 26;
+  x.strokeStyle = 'rgba(125,211,252,.1)'; x.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { x.beginPath(); x.moveTo(0, H * i / 4); x.lineTo(W, H * i / 4); x.stroke(); }
+  const n = curva.loss.length;
+  if (!n) { x.fillStyle = '#5d7189'; x.font = '12px "JetBrains Mono", monospace'; x.fillText('la curva aparece al entrenar', P, H / 2 + 4); return; }
+  const maxL = Math.max(...curva.loss, 0.01);
+  const linea = (arr, max, color) => {
+    x.strokeStyle = color; x.lineWidth = 2; x.shadowColor = color; x.shadowBlur = 8;
+    x.beginPath();
+    arr.forEach((v, i) => { if (v == null) return; const px = P + (W - 2 * P) * (n === 1 ? 0 : i / (n - 1)), py = H - P - (H - P - TOP) * (v / max); i ? x.lineTo(px, py) : x.moveTo(px, py); });
+    x.stroke(); x.shadowBlur = 0;
+  };
+  linea(curva.loss, maxL, '#f472b6');
+  linea(curva.acc, 1, '#22d3ee');
+  if (curva.vacc.some(v => v != null)) linea(curva.vacc, 1, '#34d399');
+  x.font = '11px "JetBrains Mono", monospace';
+  [['error', '#f472b6'], ['acierto', '#22d3ee'], ['muestras nuevas', '#34d399']].forEach(([t, col], i) => { x.fillStyle = col; x.fillText('● ' + t, P + i * 96, 16); });
+}
 
 $('#btnEntrenar').onclick = async () => {
   const est = $('#estadoModelo'), bar = $('#progreso');
-  if (!puedeEscribir(est)) return;
-  setEstado(est, 'Bajando todas las muestras del equipo…');
+  if (!puedeEscribir()) return;
+  nota(est, 'bajando todas las muestras del equipo…');
   await cargarMuestras(true);
-  if (!count(REPOSO)) return setEstado(est, 'Graba primero algunas muestras de «reposo» (sin hacer señas).', 'error');
+  if (count(REPOSO) < 3) return nota(est, 'Graba primero al menos 3 muestras de «reposo» (sin hacer señas).', 'error');
   busy(true);
+  curva.loss = []; curva.acc = []; curva.vacc = [];
+  const t0 = performance.now();
   try {
     const m = await train(samples, vocab, s => {
       bar.style.width = (s.ep / s.epochs * 100) + '%';
-      setEstado(est, `Entrenando… ${s.ep}/${s.epochs} · acierto ${(s.acc * 100).toFixed(0)} %` + (s.vacc != null ? ` · en muestras no vistas ${(s.vacc * 100).toFixed(0)} %` : ''));
+      curva.loss.push(s.loss); curva.acc.push(s.acc); curva.vacc.push(s.vacc);
+      dibujarCurva();
+      nota(est, `entrenando… época ${s.ep}/${s.epochs} · acierto ${(s.acc * 100).toFixed(0)} %` + (s.vacc != null ? ` · en muestras nuevas ${(s.vacc * 100).toFixed(0)} %` : ''));
     });
-    setEstado(est, 'Publicando el modelo para todos…');
+    nota(est, 'publicando el modelo…');
     await store.guardarModelo(m);
-    model = m;
-    setEstado(est, describeModel(), 'ok');
-    renderModelo();
-  } catch (e) { setEstado(est, e.message, 'error'); }
-  finally { busy(false); }
+    model = m; modeloViejo = false;
+    nota(est, `✓ Entrenado en ${((performance.now() - t0) / 1000).toFixed(1)} s${store.modo === 'nube' ? ' y publicado para todos los que abren el link' : ''}.`, 'ok');
+    toast('Modelo listo. Prueba en «En vivo».', 'ok');
+  } catch (e) { nota(est, e.message, 'error'); bar.style.width = '0'; }
+  finally { busy(false); refrescarTodo(); }
 };
 
-function describeModel() {
-  if (!model) return 'Sin modelo todavía.';
-  const s = model.stats || {};
-  const v = s.vacc != null ? ` · acierta ${(s.vacc * 100).toFixed(0)} % en muestras que no vio` : '';
-  return `Modelo con ${model.labels.length - (model.labels.includes(REPOSO) ? 1 : 0)} señas y ${s.n || '?'} muestras${v}.`;
+function renderModelo() {
+  const s = model?.stats || {};
+  const n = model ? model.labels.filter(l => l !== REPOSO).length : 0;
+  chip('#chipModelo', model ? (modeloViejo ? 'wait' : 'on') : 'off', model ? `${n} señas${s.vacc != null ? ' · ' + Math.round(s.vacc * 100) + ' %' : ''}` : 'sin modelo');
+  $('#mAcc').textContent = s.vacc != null ? Math.round(s.vacc * 100) + '%' : (model ? Math.round((s.acc || 0) * 100) + '%' : '—');
+  $('#mSenas').textContent = model ? n : '—';
+  $('#mMuestras').textContent = model ? s.n : '—';
+  const ps = s.porSena;
+  $('#porSena').innerHTML = ps ? Object.entries(ps).filter(([l]) => l !== REPOSO).sort((a, b) => (a[1].acc ?? 1) - (b[1].acc ?? 1)).map(([l, v]) => {
+    const a = v.acc ?? 0, cls = a >= .85 ? '' : a >= .6 ? 'flojo' : 'malo';
+    return `<div class="ps ${cls}" title="${v.n} muestras"><span>${esc(l)}</span><span class="b"><i style="width:${(a * 100).toFixed(0)}%"></i></span><span class="p">${v.acc == null ? '—' : Math.round(a * 100) + '%'}</span></div>`;
+  }).join('') : '<p class="nota">Entrena para ver qué señas reconoce mejor.</p>';
+  if (!curva.loss.length && s.ep) { /* sin curva guardada */ }
+  renderComo();
 }
-function marcarModeloViejo() { if (model) setEstado($('#estadoModelo'), describeModel() + ' Hay muestras nuevas: vuelve a entrenar.'); }
-function renderModelo() { $('#sinModelo').hidden = !!model; }
+
+function renderChecklist() {
+  const senasListas = vocab.filter(v => v !== REPOSO && count(v) >= MINIMO).length;
+  const items = [
+    [running, 'Cámara encendida'],
+    ...(store.modo === 'nube' ? [[claveOk, 'Clave del equipo (para grabar en la nube)']] : []),
+    [count(REPOSO) >= MINIMO, `«reposo» con ${MINIMO}+ muestras (${count(REPOSO)})`],
+    [senasListas >= 5, `5 señas o más con ${MINIMO}+ muestras (${senasListas})`],
+    [!!model && !modeloViejo, 'Modelo entrenado con las muestras actuales'],
+    [(model?.stats?.vacc ?? 0) >= 0.85, 'Acierto de 85 % o más en muestras nuevas'],
+    [clips.size >= Math.min(5, senasListas || 5), `Videos de referencia (opcional): ${clips.size}`],
+  ];
+  $('#checklist').innerHTML = items.map(([ok, t]) => `<li class="${ok ? 'ok' : ''}">${esc(t)}</li>`).join('');
+}
 
 function renderSenas() {
+  const total = vocab.reduce((n, v) => n + count(v), 0);
+  $('#totalMuestras').textContent = `${total} muestras`;
   $('#senas').innerHTML = vocab.map(v => {
-    const n = count(v);
-    return `<button data-v="${esc(v)}" aria-pressed="${v === selected}"><span>${esc(v)}${clips.has(v) ? ' 🎬' : ''}</span><span class="c ${n >= 15 ? 'lista' : ''}">${n}</span></button>`;
+    const n = count(v), p = Math.min(100, n / META * 100);
+    return `<button class="sena ${v === REPOSO ? 'reposo' : ''}" role="option" data-v="${esc(v)}" aria-selected="${v === selected}"><span class="anillo ${n >= MINIMO ? 'listo' : ''}" style="--p:${p.toFixed(0)}"></span><span class="nm">${esc(v)}</span>${clips.has(v) ? '<span class="vid" title="tiene video"></span>' : ''}<span class="ct">${n}</span></button>`;
   }).join('');
-  renderVocab();
 }
-$('#senas').onclick = e => { const b = e.target.closest('button'); if (!b) return; selected = b.dataset.v; renderSenas(); setEstado($('#estadoGrab'), selected === REPOSO ? '«reposo»: manos quietas, abajo, acomodándote o rascándote. Sin señas.' : ''); };
+function renderSel() {
+  const n = count(selected);
+  $('#selNombre').textContent = selected;
+  $('#selTrad').textContent = selected === REPOSO ? 'sin seña' : ['en', 'he', 'qu', 'ay', 'gn'].map(l => TRAD[selected]?.[l]).filter(Boolean).join(' · ');
+  $('#selCuenta').textContent = n;
+  const a = $('#selAnillo'); a.style.setProperty('--p', Math.min(100, n / META * 100).toFixed(0)); a.classList.toggle('listo', n >= MINIMO);
+  $('#selConsejo').textContent = selected === REPOSO
+    ? 'Manos quietas, abajo, acomodándote o rascándote: así la app aprende cuándo NO hay seña.'
+    : n >= META ? '✓ Suficientes muestras. Más variedad (otra persona, otra luz) mejora el modelo.'
+    : `Faltan ${META - n} muestras. Varía un poco la distancia y la posición.`;
+}
+$('#senas').onclick = e => {
+  const b = e.target.closest('.sena'); if (!b) return;
+  selected = b.dataset.v; renderSenas(); renderSel(); nota($('#estadoGrab'), '');
+};
 
 // ---------- Datos ----------
-function renderVocab() {
-  $('#vocab').innerHTML = vocab.map(v => `<li>${esc(v)}<span>${count(v)} muestras${clips.has(v) ? ' · video' : ''}</span>${v === REPOSO ? '' : `<button data-del="${esc(v)}" aria-label="Quitar ${esc(v)}">✕</button>`}</li>`).join('');
+function renderTabla() {
+  const cols = ['en', 'he', 'qu', 'ay', 'gn'];
+  $('#tablaVocab').innerHTML = `<thead><tr><th>Seña</th><th>Muestras</th><th>Video</th>${cols.map(c => `<th>${c}</th>`).join('')}<th></th></tr></thead><tbody>` +
+    vocab.map(v => `<tr><td>${esc(v)}</td><td class="num">${count(v)}</td><td>${clips.has(v) ? '🎬' : ''}</td>${cols.map(c => `<td>${esc(v === REPOSO ? '' : (TRAD[v]?.[c] || '—'))}</td>`).join('')}<td>${v === REPOSO ? '' : `<button class="quitar" data-del="${esc(v)}" aria-label="Quitar ${esc(v)}">✕</button>`}</td></tr>`).join('') + '</tbody>';
 }
-$('#vocab').onclick = async e => {
-  const v = e.target.dataset?.del; if (!v) return;
-  const est = $('#estadoDatos');
-  if (!puedeEscribir(est) || !confirm(`¿Quitar «${v}» con sus muestras y su video, para todo el equipo?`)) return;
+$('#tablaVocab').onclick = async e => {
+  const v = e.target.closest('.quitar')?.dataset.del; if (!v) return;
+  if (!puedeEscribir() || !confirm(`¿Quitar «${v}» con sus muestras y su video, para todo el equipo?`)) return;
   try {
     const nuevo = vocab.filter(x => x !== v);
     await store.borrarMuestras(v);
     if (clips.has(v)) await store.borrarVideo(v);
     await store.guardarVocab(nuevo);
-    vocab = nuevo; samples = samples.filter(s => s.label !== v); clips.delete(v);
+    vocab = nuevo; samples = samples.filter(s => s.label !== v); clips.delete(v); modeloViejo = true;
     if (selected === v) selected = REPOSO;
-    renderSenas(); marcarModeloViejo();
-  } catch (err) { setEstado(est, err.message, 'error'); }
+    toast(`«${v}» quitada.`);
+  } catch (err) { toast(err.message, 'error'); }
+  refrescarTodo();
 };
 $('#formSena').onsubmit = async e => {
   e.preventDefault();
-  const est = $('#estadoDatos');
-  const v = $('#nuevaSena').value.trim().toLowerCase(); if (!v || !puedeEscribir(est)) return;
+  const v = $('#nuevaSena').value.trim().toLowerCase(); if (!v || !puedeEscribir()) return;
   try {
     if (!vocab.includes(v)) { await store.guardarVocab([...vocab, v]); vocab.push(v); }
-    $('#nuevaSena').value = ''; selected = v; renderSenas();
-    setEstado(est, `«${v}» agregada.`, 'ok');
-  } catch (err) { setEstado(est, err.message, 'error'); }
+    $('#nuevaSena').value = ''; selected = v;
+    toast(`«${v}» agregada. Grábala en «Entrenar».`, 'ok');
+  } catch (err) { toast(err.message, 'error'); }
+  refrescarTodo();
 };
 
 const blobToData = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); });
@@ -422,74 +611,117 @@ $('#btnExportar').onclick = async () => {
   a.href = URL.createObjectURL(new Blob([JSON.stringify(out)], { type: 'application/json' }));
   a.download = `senas-lsb-${new Date().toISOString().slice(0, 10)}.json`;
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  setEstado($('#estadoDatos'), `Exportadas ${samples.length} muestras y ${Object.keys(out.clips).length} videos.`, 'ok');
+  nota($('#estadoDatos'), `✓ Exportadas ${samples.length} muestras y ${Object.keys(out.clips).length} videos.`, 'ok');
 };
 $('#archivo').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
-  if (!puedeEscribir($('#estadoDatos'))) { e.target.value = ''; return; }
+  e.target.value = '';
+  if (!puedeEscribir()) return;
+  const est = $('#estadoDatos');
   try {
     const d = JSON.parse(await f.text());
-    if (d.app !== 'manos-que-hablan' || d.D !== D) throw new Error('el archivo no es de esta app o de otra versión');
+    if (d.app !== 'manos-que-hablan' || d.D !== D) throw new Error('el archivo no es de esta app o es de otra versión');
     await cargarMuestras();
-    setEstado($('#estadoDatos'), 'Subiendo…');
+    nota(est, 'subiendo…');
     const nuevoVocab = [...vocab, ...(d.vocab || []).filter(v => !vocab.includes(v))];
     await store.guardarVocab(nuevoVocab); vocab = nuevoVocab;
     const nuevas = (d.samples || []).map(s => ({ label: s.l, x: typeof s.x === 'string' ? b64ToF32(s.x) : Float32Array.from(s.x) }));
     await store.agregarMuestras(nuevas); samples.push(...nuevas);
     let nc = 0;
     for (const [c, url] of Object.entries(d.clips || {})) { await store.guardarVideo(c, await (await fetch(url)).blob()); clips.add(c); nc++; }
-    renderSenas(); marcarModeloViejo();
-    setEstado($('#estadoDatos'), `Sumadas ${d.samples?.length || 0} muestras y ${nc} videos. Vuelve a entrenar el modelo.`, 'ok');
-  } catch (err) { setEstado($('#estadoDatos'), 'No se pudo importar: ' + err.message, 'error'); }
-  e.target.value = '';
+    modeloViejo = true;
+    nota(est, `✓ Sumadas ${nuevas.length} muestras y ${nc} videos. Vuelve a entrenar el modelo.`, 'ok');
+  } catch (err) { nota(est, 'No se pudo importar: ' + err.message, 'error'); }
+  refrescarTodo();
 };
 $('#btnReset').onclick = async () => {
-  if (!puedeEscribir($('#estadoDatos'))) return;
+  if (!puedeEscribir()) return;
   if (!confirm('¿Borrar TODAS las muestras, videos y el modelo, para todo el equipo? Exporta antes si quieres conservarlos.')) return;
-  try { await store.borrarTodo(); } catch (err) { return setEstado($('#estadoDatos'), err.message, 'error'); }
-  vocab = DEFAULT_VOCAB.slice(); samples = []; model = null; clips = new Set(); clipCache.clear();
-  selected = vocab[1]; renderSenas(); renderModelo(); setEstado($('#estadoModelo'), describeModel());
-  setEstado($('#estadoDatos'), 'Todo borrado.');
+  try { await store.borrarTodo(); } catch (err) { return toast(err.message, 'error'); }
+  vocab = DEFAULT_VOCAB.slice(); samples = []; model = null; clips = new Set(); clipCache.clear(); modeloViejo = false;
+  selected = vocab[1];
+  nota($('#estadoDatos'), 'Todo borrado.');
+  refrescarTodo();
 };
 
-// ---------- Pestañas ----------
-document.querySelector('.tabs').onclick = e => {
-  const b = e.target.closest('button'); if (!b) return;
-  tab = b.dataset.tab;
-  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
-  document.querySelectorAll('[data-panel]').forEach(p => p.hidden = p.dataset.panel !== tab);
-  document.querySelector('.grid').classList.toggle('solo-panel', tab === 'datos' || tab === 'profe');
-  showBars(null);
-  if (tab === 'entrenar' || tab === 'datos') cargarMuestras();
-};
+// ---------- Cómo funciona ----------
+function renderComo() {
+  const s = model?.stats || {};
+  const datos = [
+    [model ? model.labels.filter(l => l !== REPOSO).length : 0, 'señas que reconoce'],
+    [s.vacc != null ? Math.round(s.vacc * 100) + '%' : '—', 'acierto en muestras nuevas'],
+    [running ? Math.round(msInf) + ' ms' : '—', 'por cuadro (cámara + IA)'],
+    [Object.keys(IDIOMAS).length, 'idiomas de salida'],
+  ];
+  $('#metricasComo').innerHTML = datos.map(([v, t]) => `<div><span class="mono">${esc(v)}</span><small>${esc(t)}</small></div>`).join('');
+}
 
-function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+// ---------- Navegación ----------
+function irA(v) {
+  vista = v;
+  $$('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.view === v));
+  $$('[data-vista]').forEach(s => s.hidden = s.dataset.vista !== v);
+  moverCamara();
+  showPred(null);
+  if (v === 'entrenar' || v === 'datos') cargarMuestras();
+  if (v === 'entrenar') requestAnimationFrame(dibujarCurva);
+  if (v === 'como') renderComo();
+  guardarPref('vista', v);
+}
+$('.tabs').onclick = e => { const b = e.target.closest('button'); if (b) irA(b.dataset.view); };
 
+// ---------- Idioma ----------
 const sel = $('#idioma');
-sel.innerHTML = Object.entries(IDIOMAS).map(([k, v]) => `<option value="${k}">${esc(v.nombre)}${v.validar ? ' (borrador)' : ''}</option>`).join('');
+sel.innerHTML = Object.entries(IDIOMAS).map(([k, v]) => `<option value="${k}">${esc(v.nombre)}${v.validar ? ' · borrador' : ''}</option>`).join('');
 sel.value = lang;
 sel.onchange = () => {
-  lang = sel.value;
-  try { localStorage.setItem('mqh-idioma', lang); } catch {}
-  pickVoice(); renderSentence(); renderRapidas();
-  $('#subtitulo').dir = IDIOMAS[lang].rtl ? 'rtl' : 'ltr';
-  if (escuchando) { escuchando = false; rec.stop(); }
+  lang = sel.value; guardarPref('idioma', lang);
+  pickVoice(); renderSentence(); renderRapidas(); renderChat();
+  if (escuchando) pararMic();
+  if (IDIOMAS[lang].validar) toast(`${IDIOMAS[lang].nombre}: traducción en borrador, valídala con un hablante. Se lee con voz en castellano.`, '', 5000);
+  else if (lang !== 'es' && 'speechSynthesis' in window && speechSynthesis.getVoices().length && !voz) toast('Este equipo no tiene voz instalada en ese idioma.', 'error');
 };
-renderRapidas(); pickVoice();
 
-// Clave del equipo (solo en modo nube)
-const zonaClave = $('#zonaClave');
-zonaClave.hidden = store.modo !== 'nube';
+// ---------- Clave del equipo ----------
+let claveOk = false;
+$('#zonaClave').hidden = store.modo !== 'nube';
+async function probarClave() {
+  if (store.modo !== 'nube') return;
+  if (!store.clave()) { claveOk = false; chip('#chipClave', 'off', 'sin clave'); renderChecklist(); return; }
+  chip('#chipClave', 'wait', 'probando');
+  try { claveOk = !!(await store.probarClave()); chip('#chipClave', claveOk ? 'on' : 'err', claveOk ? 'clave correcta' : 'clave incorrecta'); }
+  catch (e) { claveOk = false; chip('#chipClave', 'err', 'error'); }
+  renderChecklist();
+}
 if (store.modo === 'nube') {
   $('#clave').value = store.clave();
-  const mostrarClave = async () => {
-    if (!store.clave()) return setEstado($('#estadoClave'), 'Sin clave: puedes usar la app, pero no grabar.');
-    try { const ok = await store.probarClave(); setEstado($('#estadoClave'), ok ? '✓ Clave correcta: puedes grabar y entrenar.' : '✗ Clave incorrecta: solo lectura.', ok ? 'ok' : 'error'); }
-    catch (e) { setEstado($('#estadoClave'), e.message, 'error'); }
-  };
-  $('#formClave').onsubmit = e => { e.preventDefault(); store.setClave($('#clave').value); mostrarClave(); };
-  mostrarClave();
+  $('#formClave').onsubmit = async e => { e.preventDefault(); store.setClave($('#clave').value); await probarClave(); toast(claveOk ? 'Clave correcta: ya puedes grabar y entrenar.' : 'Clave incorrecta.', claveOk ? 'ok' : 'error'); };
+  probarClave();
 }
+
+// ---------- Teclado y pantalla completa ----------
+function pantallaCompleta() {
+  if (document.fullscreenElement) document.exitFullscreen?.();
+  else document.documentElement.requestFullscreen?.().catch(() => {});
+}
+$('#btnPantalla').onclick = pantallaCompleta;
+addEventListener('keydown', e => {
+  if (e.target.closest('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (vista === 'vivo' && e.code === 'Space') { e.preventDefault(); $('#btnHablar').click(); }
+  else if (vista === 'vivo' && e.key === 'Enter') { e.preventDefault(); enviar(); }
+  else if (vista === 'vivo' && e.key === 'Backspace') { e.preventDefault(); $('#btnDeshacer').click(); }
+  else if (e.key === 'm' || e.key === 'M') toggleMic();
+  else if (e.key === 'f' || e.key === 'F') pantallaCompleta();
+});
+
+// ---------- Arranque ----------
+function refrescarTodo() {
+  renderSenas(); renderSel(); renderTabla(); renderModelo(); renderChecklist(); renderComo(); showPred(null);
+}
+renderRapidas(); renderSentence(); renderChat(); refrescarTodo(); dibujarCurva();
+irA(['vivo', 'entrenar', 'datos', 'como'].includes(leerPref('vista', 'vivo')) ? leerPref('vista', 'vivo') : 'vivo');
 cargarTodo();
-renderSenas(); renderModelo(); renderSentence();
-setEstado($('#estadoModelo'), describeModel());
+addEventListener('resize', () => vista === 'entrenar' && dibujarCurva());
+
+// Funciona sin internet después de la primera carga
+if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});

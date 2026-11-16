@@ -100,24 +100,47 @@ export class Avatar {
       }
     }
 
-    // Cuerpo
+    const brillo = css.getPropertyValue('--ropa2').trim() || '#22d3ee';
+    const resp = Math.sin(performance.now() / 900) * SW * 0.012;   // respiración
+    const hy = (y) => y + resp;
+
+    // Cuerpo: traje oscuro con borde luminoso
     x.lineJoin = x.lineCap = 'round';
-    x.fillStyle = ropa; x.strokeStyle = borde; x.lineWidth = 3;
+    x.save();
+    x.shadowColor = brillo; x.shadowBlur = 18;
+    x.fillStyle = ropa; x.strokeStyle = brillo; x.lineWidth = 2;
     x.beginPath();
     x.moveTo(hombros[0][0] - SW * 0.08, H + 10);
-    x.lineTo(hombros[0][0] - SW * 0.05, hombros[0][1] + SW * 0.1);
-    x.quadraticCurveTo(hombros[0][0], hombros[0][1] - SW * 0.08, nx, hombros[0][1] - SW * 0.1);
-    x.quadraticCurveTo(hombros[1][0], hombros[1][1] - SW * 0.08, hombros[1][0] + SW * 0.05, hombros[1][1] + SW * 0.1);
+    x.lineTo(hombros[0][0] - SW * 0.05, hy(hombros[0][1] + SW * 0.1));
+    x.quadraticCurveTo(hombros[0][0], hy(hombros[0][1] - SW * 0.08), nx, hy(hombros[0][1] - SW * 0.1));
+    x.quadraticCurveTo(hombros[1][0], hy(hombros[1][1] - SW * 0.08), hombros[1][0] + SW * 0.05, hy(hombros[1][1] + SW * 0.1));
     x.lineTo(hombros[1][0] + SW * 0.08, H + 10);
     x.closePath(); x.fill(); x.stroke();
+    x.restore();
+    // Líneas del traje
+    x.strokeStyle = brillo; x.globalAlpha = 0.35; x.lineWidth = 1.5;
+    x.beginPath(); x.moveTo(nx, hy(hombros[0][1] - SW * 0.02)); x.lineTo(nx, H); x.stroke();
+    for (const d of [-1, 1]) { x.beginPath(); x.moveTo(nx + d * SW * 0.18, hy(hombros[0][1] + SW * 0.05)); x.lineTo(nx + d * SW * 0.26, H); x.stroke(); }
+    x.globalAlpha = 1;
     // Cuello y cabeza
-    x.fillStyle = piel;
-    x.fillRect(nx - SW * 0.09, ny + SW * 0.2, SW * 0.18, SW * 0.3);
-    x.beginPath(); x.ellipse(nx, ny - SW * 0.05, SW * 0.27, SW * 0.33, 0, 0, Math.PI * 2); x.fill(); x.stroke();
-    // Cara amable
+    x.fillStyle = piel; x.strokeStyle = borde; x.lineWidth = 2;
+    x.fillRect(nx - SW * 0.09, hy(ny + SW * 0.2), SW * 0.18, SW * 0.3);
+    x.beginPath(); x.ellipse(nx, hy(ny - SW * 0.05), SW * 0.27, SW * 0.33, 0, 0, Math.PI * 2); x.fill(); x.stroke();
+    // Cara amable (parpadea de vez en cuando)
+    const parpadeo = (performance.now() % 4200) < 140;
     x.fillStyle = borde;
-    for (const d of [-1, 1]) { x.beginPath(); x.arc(nx + d * SW * 0.1, ny - SW * 0.08, SW * 0.025, 0, Math.PI * 2); x.fill(); }
-    x.beginPath(); x.arc(nx, ny + SW * 0.04, SW * 0.08, 0.15 * Math.PI, 0.85 * Math.PI); x.stroke();
+    for (const d of [-1, 1]) {
+      x.beginPath();
+      if (parpadeo) x.fillRect(nx + d * SW * 0.1 - SW * 0.03, hy(ny - SW * 0.08), SW * 0.06, SW * 0.008 + 1);
+      else x.arc(nx + d * SW * 0.1, hy(ny - SW * 0.08), SW * 0.025, 0, Math.PI * 2);
+      x.fill();
+    }
+    x.beginPath(); x.arc(nx, hy(ny + SW * 0.04), SW * 0.08, 0.15 * Math.PI, 0.85 * Math.PI); x.stroke();
+    // Auricular con micrófono (toque tecnológico)
+    x.strokeStyle = brillo; x.lineWidth = SW * 0.025;
+    x.beginPath(); x.ellipse(nx, hy(ny - SW * 0.05), SW * 0.3, SW * 0.36, 0, Math.PI * 1.05, Math.PI * 1.95); x.stroke();
+    x.beginPath(); x.moveTo(nx + SW * 0.28, hy(ny)); x.quadraticCurveTo(nx + SW * 0.26, hy(ny + SW * 0.2), nx + SW * 0.08, hy(ny + SW * 0.16)); x.stroke();
+    x.fillStyle = brillo; x.beginPath(); x.arc(nx + SW * 0.28, hy(ny - SW * 0.02), SW * 0.045, 0, Math.PI * 2); x.fill();
 
     // Brazos y manos
     for (const s of [0, 1]) {
@@ -125,9 +148,13 @@ export class Avatar {
       x.globalAlpha = Math.max(0, Math.min(1, alpha[s]));
       const w = p[0], h = w[0] < nx ? hombros[0] : hombros[1];
       const codo = [(h[0] + w[0]) / 2 + (w[0] < nx ? -1 : 1) * SW * 0.12, Math.max(h[1], w[1]) + SW * 0.25];
-      x.strokeStyle = ropa; x.lineWidth = SW * 0.16;
-      x.beginPath(); x.moveTo(h[0], h[1]); x.quadraticCurveTo(codo[0], codo[1], w[0], w[1]); x.stroke();
-      // mano: palma rellena + dedos gruesos
+      x.save(); x.shadowColor = brillo; x.shadowBlur = 12;
+      x.strokeStyle = brillo; x.lineWidth = SW * 0.17;
+      x.beginPath(); x.moveTo(h[0], hy(h[1])); x.quadraticCurveTo(codo[0], codo[1], w[0], w[1]); x.stroke();
+      x.restore();
+      x.strokeStyle = ropa; x.lineWidth = SW * 0.15;
+      x.beginPath(); x.moveTo(h[0], hy(h[1])); x.quadraticCurveTo(codo[0], codo[1], w[0], w[1]); x.stroke();
+      // mano: palma + dedos con contorno
       x.fillStyle = piel; x.strokeStyle = borde; x.lineWidth = 2;
       x.beginPath(); for (const j of [0, 1, 5, 9, 13, 17]) x.lineTo(p[j][0], p[j][1]); x.closePath(); x.fill(); x.stroke();
       for (const [a, b] of CONN) {
@@ -136,6 +163,10 @@ export class Avatar {
         x.strokeStyle = piel; x.lineWidth = SW * 0.055;
         x.beginPath(); x.moveTo(...p[a]); x.lineTo(...p[b]); x.stroke();
       }
+      // puntas de los dedos luminosas
+      x.save(); x.shadowColor = brillo; x.shadowBlur = 10; x.fillStyle = brillo;
+      for (const j of [4, 8, 12, 16, 20]) { x.beginPath(); x.arc(p[j][0], p[j][1], SW * 0.018, 0, Math.PI * 2); x.fill(); }
+      x.restore();
       x.globalAlpha = 1;
     }
   }

@@ -19,7 +19,12 @@ const ARR = ['mean', 'std', 'W1', 'b1', 'W2', 'b2'];
 const mapa = (o, f) => o ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, f(v)])) : undefined;
 export const encodeModel = m => { const o = { ...m }; for (const k of ARR) o[k] = f32ToB64(m[k]); o.protos = mapa(m.protos, f32ToB64); return o; };
 export const decodeModel = o => { if (!o) return null; const m = { ...o }; for (const k of ARR) m[k] = b64ToF32(o[k]); m.protos = mapa(o.protos, b64ToF32); return m; };
-const blobToData = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); });
+const blobToData = async b => {
+  const u = new Uint8Array(await b.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return `data:${b.type || 'application/octet-stream'};base64,${btoa(s)}`;
+};
 const dataToBlob = async d => (await fetch(d)).blob();
 
 // ---------- Local (IndexedDB) ----------
@@ -72,7 +77,7 @@ async function storeLocal(defaultVocab) {
 }
 
 // ---------- Nube (Supabase, por REST) ----------
-function storeNube(defaultVocab) {
+export function storeNube(defaultVocab, SUPABASE_URL, SUPABASE_KEY) {
   let clave = '';
   try { clave = localStorage.getItem('mqh-clave') || ''; } catch {}
   const base = SUPABASE_URL.replace(/\/$/, '') + '/rest/v1/';
@@ -149,5 +154,5 @@ function storeNube(defaultVocab) {
 }
 
 export async function crearStore(defaultVocab) {
-  return SUPABASE_URL && SUPABASE_KEY ? storeNube(defaultVocab) : storeLocal(defaultVocab);
+  return SUPABASE_URL && SUPABASE_KEY ? storeNube(defaultVocab, SUPABASE_URL, SUPABASE_KEY) : storeLocal(defaultVocab);
 }

@@ -2,144 +2,243 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Manos que hablan</title>
-<meta name="description" content="Traductor de Lengua de Señas Boliviana en el navegador: señas a voz y voz a señas para el aula.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🤟%3C/text%3E%3C/svg%3E">
+<meta name="description" content="Traductor en vivo de Lengua de Señas Boliviana: señas a voz y voz a señas con un avatar. Inteligencia artificial que corre en el navegador.">
+<meta name="theme-color" content="#060a13">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icono.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icono.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fraunces:opsz,wght@9..144,600;9..144,800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div class="fondo" aria-hidden="true"><div class="rejilla"></div><div class="brillo b1"></div><div class="brillo b2"></div></div>
+
 <header class="top">
-  <div class="marca">
-    <span class="logo" aria-hidden="true">🤟</span>
-    <div>
-      <h1>Manos que hablan</h1>
-      <p class="lema">Lengua de Señas Boliviana ↔ voz, en el aula</p>
-    </div>
-  </div>
-  <label class="idioma">🌐 <select id="idioma" aria-label="Idioma de salida"></select></label>
-  <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="clase" aria-selected="true">Alumno <small>señas → voz</small></button>
-    <button role="tab" data-tab="profe">Profesor <small>voz → señas</small></button>
-    <button role="tab" data-tab="entrenar">Entrenar</button>
-    <button role="tab" data-tab="datos">Datos</button>
+  <a class="marca" href="#" aria-label="Manos que hablan">
+    <svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="13" fill="none" stroke="url(#lg)" stroke-width="2.5"/><path d="M15 31V19.5a2 2 0 0 1 4 0V27M19 26V15.5a2 2 0 0 1 4 0V26M23 26V16.5a2 2 0 0 1 4 0V26M27 27v-6.5a2 2 0 0 1 4 0V30c0 5-3.5 8-8 8s-6-2-8-5l-2.5-4.5a2 2 0 0 1 3.4-2L15 28" fill="none" stroke="url(#lg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M35 15c1.6 1.2 2.6 3 2.6 5M37.6 11.6c2.6 2 4.2 5 4.2 8.4" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/></svg>
+    <span><b>Manos que hablan</b><small>LSB ⇄ voz · IA en tu navegador</small></span>
+  </a>
+  <nav class="tabs" role="tablist" aria-label="Secciones">
+    <button role="tab" data-view="vivo" aria-selected="true"><i>◉</i>En vivo</button>
+    <button role="tab" data-view="entrenar" aria-selected="false"><i>◇</i>Entrenar</button>
+    <button role="tab" data-view="datos" aria-selected="false"><i>▦</i>Datos</button>
+    <button role="tab" data-view="como" aria-selected="false"><i>?</i>Cómo funciona</button>
   </nav>
+  <div class="estado-barra">
+    <span class="chip" id="chipCam" data-s="off" title="Cámara"><span class="dot"></span><span>Cámara</span></span>
+    <span class="chip" id="chipModelo" data-s="off" title="Modelo"><span class="dot"></span><span>Sin modelo</span></span>
+    <span class="chip" id="chipNube" data-s="off" title="Datos"><span class="dot"></span><span>…</span></span>
+    <label class="idioma" title="Idioma de salida"><span aria-hidden="true">🌐</span><select id="idioma" aria-label="Idioma"></select></label>
+    <button class="icono" id="btnPantalla" title="Pantalla completa (F)" aria-label="Pantalla completa">⛶</button>
+  </div>
 </header>
 
-<p class="estado nube" id="estadoNube"></p>
-<main class="grid">
-  <!-- Cámara compartida -->
-  <section class="cam-panel" id="camPanel">
-    <div class="cam">
-      <video id="video" playsinline muted></video>
-      <canvas id="overlay"></canvas>
-      <div class="cam-vacia" id="camVacia">
-        <p>La cámara sigue tus manos y tu cuerpo. Nada sale de este equipo.</p>
-        <button class="btn grande" id="btnCam">Encender cámara</button>
-        <p class="estado" id="estadoCam"></p>
+<main>
+  <!-- ======================= EN VIVO ======================= -->
+  <section class="vista vivo" data-vista="vivo">
+    <article class="card" aria-labelledby="t-alumno">
+      <header class="card-h">
+        <div><span class="kicker">Alumno</span><h2 id="t-alumno">Señas → voz</h2></div>
+        <span class="mono hud-num" id="hudFps">— fps · — ms</span>
+      </header>
+      <div id="slotCamVivo" class="slot-cam"></div>
+      <div class="barras" id="barras" aria-hidden="true"></div>
+      <div class="frase" id="frase" aria-live="polite"></div>
+      <div class="acciones">
+        <button class="btn primario" id="btnEnviar" title="Enter">➤ Enviar y decir</button>
+        <button class="btn" id="btnHablar" title="Espacio">🔊 Decir</button>
+        <button class="btn" id="btnDeshacer" title="Retroceso" aria-label="Quitar la última palabra">↶</button>
+        <button class="btn" id="btnBorrar">Borrar</button>
       </div>
-      <div class="cuenta" id="cuenta" hidden></div>
-      <div class="rec" id="rec" hidden>● grabando</div>
-    </div>
-    <div class="barras" id="barras" aria-live="off"></div>
+      <details class="ajustes">
+        <summary>Ajustes de reconocimiento</summary>
+        <label>Voz <select id="modoVoz"><option value="sena">al reconocer cada seña</option><option value="frase">solo la frase al enviar</option><option value="no">apagada</option></select></label>
+        <label><input type="checkbox" id="autoEnviar" checked> Enviar la frase sola al bajar las manos 2 s</label>
+        <label>Seguridad mínima <input type="range" id="umbral" min="50" max="95" value="75"> <output id="umbralTxt" class="mono">75 %</output></label>
+      </details>
+      <div class="rapidas" id="rapidas" aria-label="Frases rápidas"></div>
+    </article>
+
+    <article class="card chat-card" aria-labelledby="t-chat">
+      <header class="card-h">
+        <div><span class="kicker">Conversación</span><h2 id="t-chat">En vivo</h2></div>
+        <button class="btn chico" id="btnLimpiarChat">Limpiar</button>
+      </header>
+      <ol class="chat" id="chat" aria-live="polite"></ol>
+      <div class="chat-vacio" id="chatVacio">
+        <p>El alumno hace señas y el profesor habla. Aquí aparece la conversación, traducida en los dos sentidos.</p>
+        <p class="mono atajos">Espacio decir · Enter enviar · M micrófono · F pantalla completa</p>
+      </div>
+    </article>
+
+    <article class="card" aria-labelledby="t-profe">
+      <header class="card-h">
+        <div><span class="kicker violeta">Profesor</span><h2 id="t-profe">Voz → señas</h2></div>
+        <span class="mono hud-num" id="hudAvatar">avatar listo</span>
+      </header>
+      <div class="escenario" id="escenario">
+        <canvas id="avatar" aria-label="Avatar que hace las señas"></canvas>
+        <video id="clip" class="pip" playsinline muted hidden disablepictureinpicture></video>
+        <div class="sena-actual" id="clipLabel"></div>
+        <div class="subtitulo" id="subtitulo" aria-live="polite"></div>
+        <div class="esquinas" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="mic-fila">
+        <button class="mic" id="btnEscuchar" aria-pressed="false" title="Micrófono (M)" aria-label="Escuchar al profesor"><span class="ondas"></span><span class="ico">🎙</span></button>
+        <form id="formTexto" class="campo">
+          <input id="textoManual" placeholder="Habla o escribe una frase…" autocomplete="off" aria-label="Frase del profesor">
+          <button class="btn" aria-label="Mostrar en señas">➤</button>
+        </form>
+      </div>
+      <p class="nota" id="estadoVoz"></p>
+      <div class="fichas" id="fichas"></div>
+      <label class="check"><input type="checkbox" id="conVideoReal" checked> Mostrar también el video real si existe</label>
+    </article>
   </section>
 
-  <!-- ALUMNO -->
-  <section class="panel" data-panel="clase">
-    <div class="sin-modelo" id="sinModelo">
-      <h2>Primero, enseñale las señas</h2>
-      <ol>
-        <li>Ve a <b>Entrenar</b> y graba cada seña unas 15 a 20 veces, con alguien que sepa LSB.</li>
-        <li>Graba también <b>«reposo»</b>: manos quietas, acomodarse o rascarse, para que la app sepa cuándo no hay seña.</li>
-        <li>Pulsa <b>Entrenar modelo</b> y vuelve aquí.</li>
-      </ol>
+  <!-- ======================= ENTRENAR ======================= -->
+  <section class="vista entrenar" data-vista="entrenar" hidden>
+    <div class="col">
+      <article class="card">
+        <header class="card-h">
+          <div><span class="kicker">Cámara</span><h2>Grabar muestras</h2></div>
+          <span class="mono hud-num" id="hudFps2">— fps</span>
+        </header>
+        <div id="slotCamEntrenar" class="slot-cam"></div>
+        <div class="grabar-sel">
+          <div>
+            <span class="kicker">Seña elegida</span>
+            <div class="sel-nombre" id="selNombre">hola</div>
+            <div class="sel-trad mono" id="selTrad"></div>
+          </div>
+          <div class="anillo grande" id="selAnillo" style="--p:0"><span id="selCuenta">0</span><small>/ 20</small></div>
+        </div>
+        <p class="nota" id="selConsejo"></p>
+        <div class="acciones">
+          <button class="btn primario" id="btnDiez">● Grabar 10 seguidas</button>
+          <button class="btn" id="btnUna">● Grabar 1</button>
+          <button class="btn" id="btnVideo">🎬 Video de referencia</button>
+          <button class="btn peligro" id="btnBorrarSena">Borrar muestras</button>
+        </div>
+        <p class="nota" id="estadoGrab"></p>
+      </article>
     </div>
-    <div class="frase" id="frase" aria-live="polite"><span class="ph">Las señas reconocidas aparecen aquí…</span></div>
-    <div class="fila">
-      <button class="btn grande" id="btnHablar">🔊 Decir en voz alta</button>
-      <button class="btn" id="btnDeshacer">↶ Quitar última</button>
-      <button class="btn" id="btnBorrar">Borrar</button>
+    <div class="col">
+      <article class="card clave-card" id="zonaClave" hidden>
+        <header class="card-h"><div><span class="kicker">Equipo</span><h2>Clave para grabar</h2></div><span class="chip" id="chipClave" data-s="off"><span class="dot"></span><span>sin clave</span></span></header>
+        <form id="formClave" class="campo">
+          <input id="clave" type="password" placeholder="Clave del equipo" autocomplete="off" aria-label="Clave del equipo">
+          <button class="btn">Usar</button>
+        </form>
+        <p class="nota">Sin clave cualquiera puede usar la app, pero solo el equipo graba y entrena. Lo que se graba lo reciben todos los que abren el link.</p>
+      </article>
+
+      <article class="card">
+        <header class="card-h">
+          <div><span class="kicker">Vocabulario</span><h2>Señas</h2></div>
+          <span class="mono hud-num" id="totalMuestras">0 muestras</span>
+        </header>
+        <div class="senas" id="senas" role="listbox" aria-label="Señas"></div>
+      </article>
+
+      <article class="card">
+        <header class="card-h">
+          <div><span class="kicker">Red neuronal</span><h2>Entrenar modelo</h2></div>
+          <button class="btn primario" id="btnEntrenar">⚡ Entrenar</button>
+        </header>
+        <div class="metricas">
+          <div><span class="mono" id="mAcc">—</span><small>acierto en muestras nuevas</small></div>
+          <div><span class="mono" id="mSenas">—</span><small>señas</small></div>
+          <div><span class="mono" id="mMuestras">—</span><small>muestras</small></div>
+        </div>
+        <canvas class="curva" id="curva" height="120" aria-label="Curva de entrenamiento"></canvas>
+        <div class="progreso"><div id="progreso"></div></div>
+        <p class="nota" id="estadoModelo"></p>
+        <h3>Listo para la demo</h3>
+        <ul class="checklist" id="checklist"></ul>
+        <h3>Acierto por seña</h3>
+        <div class="porsena" id="porSena"><p class="nota">Entrena para ver qué señas reconoce mejor.</p></div>
+      </article>
     </div>
-    <div class="fila opciones">
-      <label><input type="checkbox" id="autoVoz" checked> Decir cada seña al reconocerla</label>
-      <label>Seguridad mínima <input type="range" id="umbral" min="50" max="95" value="75"> <output id="umbralTxt">75 %</output></label>
-    </div>
-    <p class="estado" id="avisoIdioma"></p>
-    <h3>Frases rápidas</h3>
-    <div class="rapidas" id="rapidas"></div>
   </section>
 
-  <!-- PROFESOR -->
-  <section class="panel" data-panel="profe" hidden>
-    <p class="nota">El profesor habla y el alumno sordo ve <b>subtítulos</b> y el <b>video de cada seña</b> que la app conoce.</p>
-    <div class="fila">
-      <button class="btn grande" id="btnEscuchar">🎙️ Escuchar</button>
-      <form id="formTexto" class="texto-manual">
-        <input id="textoManual" placeholder="…o escribe una frase" autocomplete="off">
-        <button class="btn">Mostrar</button>
+  <!-- ======================= DATOS ======================= -->
+  <section class="vista datos" data-vista="datos" hidden>
+    <article class="card">
+      <header class="card-h"><div><span class="kicker">Vocabulario</span><h2>Señas y traducciones</h2></div></header>
+      <form id="formSena" class="campo">
+        <input id="nuevaSena" placeholder="Nueva seña (ej. «biblioteca»)" autocomplete="off" aria-label="Nueva seña">
+        <button class="btn primario">Agregar</button>
       </form>
-    </div>
-    <p class="estado" id="estadoVoz"></p>
-    <div class="subtitulo" id="subtitulo" aria-live="polite"><span class="ph">Subtítulos en vivo</span></div>
-    <div class="reproductor">
-      <canvas id="avatar" aria-label="Avatar que hace las señas"></canvas>
-      <video id="clip" class="pip" playsinline muted hidden></video>
-      <div class="clip-label" id="clipLabel"></div>
-    </div>
-    <label class="opciones"><input type="checkbox" id="conVideoReal" checked> Mostrar también el video real de la seña si existe</label>
-    <div class="fichas" id="fichas"></div>
+      <div class="tabla-envoltura"><table class="tabla" id="tablaVocab"></table></div>
+      <p class="nota" id="estadoDatos"></p>
+    </article>
+    <article class="card">
+      <header class="card-h"><div><span class="kicker">Respaldo</span><h2>Exportar e importar</h2></div></header>
+      <p class="nota">Al importar, las muestras se <b>suman</b> a las que ya hay: así se juntan las grabaciones de varias personas y el modelo reconoce mejor a gente nueva.</p>
+      <div class="acciones">
+        <button class="btn" id="btnExportar">⬇ Exportar .json</button>
+        <label class="btn">⬆ Importar<input type="file" id="archivo" accept=".json,application/json" hidden></label>
+        <label class="check"><input type="checkbox" id="conVideos" checked> Incluir videos</label>
+      </div>
+      <div class="zona-peligro">
+        <div><b>Borrar todo</b><p class="nota">Muestras, videos y modelo, para todo el equipo.</p></div>
+        <button class="btn peligro" id="btnReset">Borrar todo</button>
+      </div>
+    </article>
   </section>
 
-  <!-- ENTRENAR -->
-  <section class="panel" data-panel="entrenar" hidden>
-    <p class="nota">Elige una seña y grábala. Cada muestra dura <b>1 segundo</b> después de la cuenta regresiva. Varía un poco la posición y la distancia; si pueden, que graben varias personas.</p>
-    <div id="zonaClave" class="clave" hidden>
-      <form id="formClave" class="texto-manual">
-        <input id="clave" type="password" placeholder="Clave del equipo" autocomplete="off">
-        <button class="btn">Usar clave</button>
-      </form>
-      <p class="estado" id="estadoClave"></p>
+  <!-- ======================= CÓMO FUNCIONA ======================= -->
+  <section class="vista como" data-vista="como" hidden>
+    <article class="card hero">
+      <span class="kicker">El problema</span>
+      <h2 class="titular">Un alumno sordo y su profesor no deberían necesitar un intérprete para entenderse.</h2>
+      <p>En Bolivia hay muy pocos intérpretes de Lengua de Señas Boliviana (LSB) para todas las aulas que los necesitan. <b>Manos que hablan</b> traduce en vivo en los dos sentidos, con una computadora o un celular y sin instalar nada.</p>
+    </article>
+    <div class="flujo">
+      <article class="card paso"><span class="num mono">01</span><h3>La cámara mira</h3><p>MediaPipe encuentra <b>21 puntos por mano</b> y la posición del cuerpo, unas 30 veces por segundo.</p></article>
+      <article class="card paso"><span class="num mono">02</span><h3>Se arma el gesto</h3><p>Un segundo de movimiento se convierte en <b>1320 números</b>: la forma de cada mano y dónde está respecto a la cara.</p></article>
+      <article class="card paso"><span class="num mono">03</span><h3>La red decide</h3><p>Una red neuronal entrenada con las grabaciones del equipo reconoce la seña <b>en milisegundos</b>, dentro del navegador.</p></article>
+      <article class="card paso"><span class="num mono">04</span><h3>Habla y responde</h3><p>La seña se dice en voz alta. La voz del profesor se convierte en señas que hace un <b>avatar</b> con el movimiento grabado.</p></article>
     </div>
-    <div class="senas" id="senas"></div>
-    <div class="fila">
-      <button class="btn grande" id="btnUna">Grabar 1</button>
-      <button class="btn grande" id="btnDiez">Grabar 10 seguidas</button>
-      <button class="btn" id="btnVideo">🎬 Video de referencia</button>
-      <button class="btn peligro" id="btnBorrarSena">Borrar muestras</button>
+    <div class="flujo tres">
+      <article class="card"><h3>🔒 Privado</h3><p>El video nunca sale del equipo: solo se comparten las muestras numéricas que graba el equipo.</p></article>
+      <article class="card"><h3>🌐 Seis idiomas</h3><p>Castellano, quechua, aymara, guaraní, inglés y hebreo. Las lenguas originarias están en borrador para validar con hablantes.</p></article>
+      <article class="card"><h3>📶 Sin internet</h3><p>Se instala como app y, después de usarla una vez con internet, sigue funcionando sin conexión: útil si el wifi del evento falla.</p></article>
     </div>
-    <p class="estado" id="estadoGrab"></p>
-    <div class="entreno">
-      <button class="btn grande primario" id="btnEntrenar">Entrenar modelo</button>
-      <div class="progreso"><div id="progreso"></div></div>
-      <p class="estado" id="estadoModelo"></p>
-    </div>
-  </section>
-
-  <!-- DATOS -->
-  <section class="panel" data-panel="datos" hidden>
-    <h2>Vocabulario</h2>
-    <form id="formSena" class="texto-manual">
-      <input id="nuevaSena" placeholder="Nueva seña (ej. «biblioteca»)" autocomplete="off">
-      <button class="btn">Agregar</button>
-    </form>
-    <ul class="vocab" id="vocab"></ul>
-    <h2>Compartir datos</h2>
-    <p class="nota">Exporta las muestras para juntar las de varias personas: al importar se <b>suman</b>. Así el modelo reconoce mejor a gente nueva.</p>
-    <div class="fila">
-      <button class="btn" id="btnExportar">Exportar (.json)</button>
-      <label class="btn">Importar <input type="file" id="archivo" accept=".json,application/json" hidden></label>
-      <label><input type="checkbox" id="conVideos" checked> Incluir videos</label>
-    </div>
-    <div class="fila">
-      <button class="btn peligro" id="btnReset">Borrar todo</button>
-    </div>
-    <p class="estado" id="estadoDatos"></p>
+    <article class="card">
+      <span class="kicker">En este momento</span>
+      <div class="metricas grandes" id="metricasComo"></div>
+    </article>
   </section>
 </main>
 
-<footer class="pie">Funciona sin servidor: MediaPipe en el navegador · Las señas deben grabarse y validarse con personas sordas o intérpretes de LSB.</footer>
+<!-- Cámara: un solo elemento que se mueve entre «En vivo» y «Entrenar» -->
+<template id="tplCam">
+  <div class="cam" id="cam">
+    <video id="video" playsinline muted disablepictureinpicture></video>
+    <canvas id="overlay"></canvas>
+    <div class="esquinas" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="scan" aria-hidden="true"></div>
+    <div class="cam-vacia" id="camVacia">
+      <div class="pulso" aria-hidden="true"></div>
+      <p>La cámara sigue tus manos y tu cuerpo.<br><span class="tenue">El video no sale de este equipo.</span></p>
+      <button class="btn primario grande" id="btnCam">Encender cámara</button>
+      <p class="nota mono" id="estadoCam"></p>
+    </div>
+    <div class="pred" id="pred" hidden><span class="anillo" id="predAnillo" style="--p:0"></span><span><b id="predTxt"></b><small class="mono" id="predPct"></small></span></div>
+    <div class="destello" id="destello"></div>
+    <div class="cuenta mono" id="cuenta" hidden></div>
+    <div class="rec mono" id="rec" hidden>● REC</div>
+  </div>
+</template>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<footer class="pie mono">Manos que hablan · Abstracthon 2026 · MediaPipe + red neuronal propia en el navegador · las señas se validan con personas sordas e intérpretes de LSB</footer>
 
 <script type="module" src="app.js"></script>
 </body>

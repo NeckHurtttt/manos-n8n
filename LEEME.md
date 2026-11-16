@@ -20,7 +20,11 @@ La cámara necesita `localhost` o HTTPS (GitHub Pages sirve). La voz → texto n
 4. **Entrenar modelo** → pestaña **Alumno**.
 
 ## Pruebas
-`node pruebas.mjs` — rasgos, red neuronal con manos sintéticas y texto → señas.
+- `node pruebas.mjs` — rasgos, red neuronal con manos sintéticas y texto → señas.
+- `node pruebas-nube.mjs` — guardado en la nube contra un Supabase falso con la misma regla de clave.
+
+## Atajos
+Espacio decir · Enter enviar · Retroceso quitar palabra · M micrófono · F pantalla completa.
 
 ## Señas compartidas por el link (Supabase)
 Sin configurar, cada navegador guarda sus propias señas. Para que **todos los que abren el link** usen las mismas:
