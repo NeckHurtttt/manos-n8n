@@ -76,7 +76,8 @@ function storeNube(defaultVocab) {
   try { clave = localStorage.getItem('mqh-clave') || ''; } catch {}
   const base = SUPABASE_URL.replace(/\/$/, '') + '/rest/v1/';
   async function req(path, { method = 'GET', body, prefer, range } = {}) {
-    const h = { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json', 'x-equipo': clave };
+    const h = { apikey: SUPABASE_KEY, 'Content-Type': 'application/json', 'x-equipo': clave };
+    if (SUPABASE_KEY.startsWith('eyJ')) h.Authorization = 'Bearer ' + SUPABASE_KEY; // claves «sb_publishable_» van solo en apikey
     if (prefer) h.Prefer = prefer;
     if (range) h.Range = range;
     const r = await fetch(base + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
