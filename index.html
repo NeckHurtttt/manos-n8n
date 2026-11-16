@@ -84,9 +84,11 @@
     <p class="estado" id="estadoVoz"></p>
     <div class="subtitulo" id="subtitulo" aria-live="polite"><span class="ph">Subtítulos en vivo</span></div>
     <div class="reproductor">
-      <video id="clip" playsinline muted></video>
+      <canvas id="avatar" aria-label="Avatar que hace las señas"></canvas>
+      <video id="clip" class="pip" playsinline muted hidden></video>
       <div class="clip-label" id="clipLabel"></div>
     </div>
+    <label class="opciones"><input type="checkbox" id="conVideoReal" checked> Mostrar también el video real de la seña si existe</label>
     <div class="fichas" id="fichas"></div>
   </section>
 

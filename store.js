@@ -16,8 +16,9 @@ export function b64ToF32(b) {
   return new Float32Array(u.buffer);
 }
 const ARR = ['mean', 'std', 'W1', 'b1', 'W2', 'b2'];
-export const encodeModel = m => { const o = { ...m }; for (const k of ARR) o[k] = f32ToB64(m[k]); return o; };
-export const decodeModel = o => { if (!o) return null; const m = { ...o }; for (const k of ARR) m[k] = b64ToF32(o[k]); return m; };
+const mapa = (o, f) => o ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, f(v)])) : undefined;
+export const encodeModel = m => { const o = { ...m }; for (const k of ARR) o[k] = f32ToB64(m[k]); o.protos = mapa(m.protos, f32ToB64); return o; };
+export const decodeModel = o => { if (!o) return null; const m = { ...o }; for (const k of ARR) m[k] = b64ToF32(o[k]); m.protos = mapa(o.protos, b64ToF32); return m; };
 const blobToData = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); });
 const dataToBlob = async d => (await fetch(d)).blob();
 

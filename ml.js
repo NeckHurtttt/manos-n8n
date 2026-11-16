@@ -181,7 +181,22 @@ export async function train(samples, order, onProgress = () => {}, { epochs = 40
     await new Promise(r => setTimeout(r, 0));
   }
   m.stats = { ...last, n: data.length, at: Date.now() };
+  // Movimiento típico de cada seña (la muestra más «central»): lo usa el avatar.
+  m.protos = {};
+  for (const l of labels) if (l !== REPOSO) m.protos[l] = medoid(data.filter(s => s.label === l).map(s => s.x));
   return m;
+}
+
+export function medoid(xs) {
+  if (xs.length <= 2) return xs[0];
+  const pick = xs.length > 40 ? xs.slice(0, 40) : xs;
+  let best = pick[0], bd = Infinity;
+  for (const a of pick) {
+    let d = 0;
+    for (const b of pick) { if (a === b) continue; for (let i = 0; i < D; i += 3) { const v = a[i] - b[i]; d += v * v; } }
+    if (d < bd) { bd = d; best = a; }
+  }
+  return best;
 }
 
 // ---------- Texto → señas ----------

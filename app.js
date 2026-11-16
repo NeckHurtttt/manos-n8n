@@ -1,6 +1,7 @@
 import { FilesetResolver, HandLandmarker, PoseLandmarker, DrawingUtils } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 import { frameFeat, resample, hasHand, train, predict, matchSigns, WIN_MS, REPOSO, D } from './ml.js';
 import { IDIOMAS, traducir, alias } from './idiomas.js';
+import { Avatar } from './avatar.js';
 import { crearStore, f32ToB64, b64ToF32 } from './store.js';
 
 const $ = s => document.querySelector(s);
@@ -192,7 +193,6 @@ function speak(t) {
 // ---------- Profesor: voz → subtítulos + señas ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, escuchando = false, finalTxt = '';
-const queue = []; let playing = false;
 const clipCache = new Map();
 
 if (!SR) setEstado($('#estadoVoz'), 'Este navegador no reconoce voz (usa Chrome o Edge). Puedes escribir la frase.', 'error');
@@ -222,28 +222,47 @@ $('#formTexto').onsubmit = e => {
   finalTxt = t; $('#subtitulo').textContent = t; showSigns(t); $('#textoManual').value = '';
 };
 
+// El avatar hace las señas; si además hay video real de esa seña, aparece en la esquina.
+const avatar = new Avatar($('#avatar'));
+const pendientes = [];
+let fichaBase = 0;
+const tieneSena = l => !!(model?.protos?.[l]);
 function showSigns(text) {
   const m = matchSigns(text, vocab, alias(lang));
-  $('#fichas').innerHTML = m.map((x, i) => `<span class="ficha ${x.label && clips.has(x.label) ? 'si' : ''}" data-i="${i}" title="${x.label ? (clips.has(x.label) ? 'tiene video' : 'seña sin video grabado') : 'no está en el vocabulario'}">${esc(x.text)}</span>`).join('');
-  m.forEach((x, i) => { if (x.label && clips.has(x.label)) queue.push({ label: x.label, i }); });
-  if (!playing) playNext();
+  const base = fichaBase; fichaBase += m.length;
+  const html = m.map((x, i) => `<span class="ficha ${x.label && tieneSena(x.label) ? 'si' : ''}" data-i="${base + i}" title="${x.label ? (tieneSena(x.label) ? 'el avatar la hace' : 'seña sin entrenar') : 'no está en el vocabulario'}">${esc(x.text)}</span>`).join('');
+  $('#fichas').innerHTML = (pendientes.length || avatar.tl ? $('#fichas').innerHTML : '') + html;
+  const signs = m.map((x, i) => ({ ...x, i: base + i })).filter(x => x.label && tieneSena(x.label)).map(x => ({ label: x.label, proto: model.protos[x.label], i: x.i }));
+  if (!model) setEstado($('#estadoVoz'), 'Todavía no hay modelo entrenado: el avatar no conoce señas.', 'error');
+  if (!signs.length) return;
+  pendientes.push(signs);
+  if (!avatar.tl) siguiente();
 }
-async function playNext() {
-  const item = queue.shift();
-  const clip = $('#clip');
+let actuales = [], idxSena = 0;
+function siguiente() {
+  const lote = pendientes.shift();
+  if (!lote) { $('#clipLabel').textContent = ''; return; }
+  actuales = lote; idxSena = 0;
+  avatar.play(lote);
+}
+avatar.onSign = label => {
   document.querySelectorAll('.ficha.ahora').forEach(f => f.classList.remove('ahora'));
-  if (!item) { playing = false; $('#clipLabel').textContent = ''; return; }
-  playing = true;
-  const blob = clipCache.get(item.label) || await store.cargarVideo(item.label).catch(() => null);
-  if (blob) clipCache.set(item.label, blob);
-  if (!blob) return playNext();
-  document.querySelector(`.ficha[data-i="${item.i}"]`)?.classList.add('ahora');
+  if (!label) { $('#clipLabel').textContent = ''; mostrarVideo(null); return; }
+  const item = actuales[idxSena++];
+  if (item) document.querySelector(`.ficha[data-i="${item.i}"]`)?.classList.add('ahora');
+  $('#clipLabel').textContent = tr(label);
+  mostrarVideo(label);
+};
+avatar.onEnd = () => setTimeout(siguiente, 100);
+async function mostrarVideo(label) {
+  const clip = $('#clip');
+  if (!label || !clips.has(label) || !$('#conVideoReal').checked) { clip.hidden = true; clip.pause(); return; }
+  const blob = clipCache.get(label) || await store.cargarVideo(label).catch(() => null);
+  if (!blob) return;
+  clipCache.set(label, blob);
   if (clip.src) URL.revokeObjectURL(clip.src);
-  clip.src = URL.createObjectURL(blob);
-  $('#clipLabel').textContent = tr(item.label);
-  clip.playbackRate = 1;
-  clip.onended = clip.onerror = () => setTimeout(playNext, 150);
-  clip.play().catch(() => setTimeout(playNext, 150));
+  clip.src = URL.createObjectURL(blob); clip.hidden = false;
+  clip.play().catch(() => {});
 }
 
 // ---------- Entrenar ----------

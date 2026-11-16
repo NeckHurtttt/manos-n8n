@@ -87,7 +87,9 @@ h3 { font-size: 1rem; color: var(--muted); margin-top: 1.25rem; }
 .subtitulo .ph { color: #9a8f82; }
 .subtitulo .interino { opacity: .6; }
 .reproductor { position: relative; margin-top: 1rem; aspect-ratio: 4 / 3; max-height: 50vh; background: var(--cam); border-radius: 14px; overflow: hidden; }
-.reproductor video { width: 100%; height: 100%; object-fit: contain; transform: scaleX(-1); }
+.reproductor { --piel: #e8b48f; --ropa: #d9480f; --borde: #3b2a20; background: radial-gradient(circle at 50% 30%, #2a221c, #120e0b); }
+.reproductor canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.reproductor .pip { position: absolute; top: 10px; right: 10px; width: 32%; aspect-ratio: 4 / 3; object-fit: cover; transform: scaleX(-1); border-radius: 10px; border: 2px solid rgba(255,255,255,.6); background: #000; }
 .clip-label { position: absolute; left: 0; right: 0; bottom: 0; padding: .6rem 1rem; font: 800 1.8rem Fraunces, serif; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.75)); text-align: center; }
 .clip-label:empty { display: none; }
 .fichas { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .75rem; }
