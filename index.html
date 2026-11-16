@@ -28,6 +28,7 @@
   </nav>
 </header>
 
+<p class="estado nube" id="estadoNube"></p>
 <main class="grid">
   <!-- Cámara compartida -->
   <section class="cam-panel" id="camPanel">
@@ -92,6 +93,13 @@
   <!-- ENTRENAR -->
   <section class="panel" data-panel="entrenar" hidden>
     <p class="nota">Elige una seña y grábala. Cada muestra dura <b>1 segundo</b> después de la cuenta regresiva. Varía un poco la posición y la distancia; si pueden, que graben varias personas.</p>
+    <div id="zonaClave" class="clave" hidden>
+      <form id="formClave" class="texto-manual">
+        <input id="clave" type="password" placeholder="Clave del equipo" autocomplete="off">
+        <button class="btn">Usar clave</button>
+      </form>
+      <p class="estado" id="estadoClave"></p>
+    </div>
     <div class="senas" id="senas"></div>
     <div class="fila">
       <button class="btn grande" id="btnUna">Grabar 1</button>

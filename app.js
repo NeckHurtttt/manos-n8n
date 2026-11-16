@@ -1,6 +1,7 @@
 import { FilesetResolver, HandLandmarker, PoseLandmarker, DrawingUtils } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 import { frameFeat, resample, hasHand, train, predict, matchSigns, WIN_MS, REPOSO, D } from './ml.js';
 import { IDIOMAS, traducir, alias } from './idiomas.js';
+import { crearStore, f32ToB64, b64ToF32 } from './store.js';
 
 const $ = s => document.querySelector(s);
 const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
@@ -18,35 +19,36 @@ try { lang = localStorage.getItem('mqh-idioma') || 'es'; } catch {}
 if (!IDIOMAS[lang]) lang = 'es';
 const tr = w => traducir(w, lang);
 
-// ---------- Guardado local (IndexedDB, con respaldo en memoria) ----------
-const DB = await new Promise(res => {
-  try {
-    const r = indexedDB.open('manos-que-hablan', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('kv');
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => res(null);
-  } catch { res(null); }
-});
-const mem = new Map();
-const kv = {
-  get: k => DB ? new Promise(res => { try { const q = DB.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(undefined); } catch { res(mem.get(k)); } }) : Promise.resolve(mem.get(k)),
-  set: (k, v) => DB ? new Promise(res => { try { const t = DB.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = t.onerror = () => res(); } catch { mem.set(k, v); res(); } }) : (mem.set(k, v), Promise.resolve()),
-  del: k => DB ? new Promise(res => { try { const t = DB.transaction('kv', 'readwrite'); t.objectStore('kv').delete(k); t.oncomplete = t.onerror = () => res(); } catch { mem.delete(k); res(); } }) : (mem.delete(k), Promise.resolve()),
-};
-
-let vocab = (await kv.get('vocab')) || DEFAULT_VOCAB.slice();
-if (!vocab.includes(REPOSO)) vocab.unshift(REPOSO);
-let samples = (await kv.get('samples')) || [];
-let model = (await kv.get('model')) || null;
-let clips = new Set((await kv.get('clipList')) || []);
-let selected = vocab.find(v => v !== REPOSO) || REPOSO;
-let tab = 'clase';
-
-const saveSamples = () => kv.set('samples', samples);
-const saveVocab = () => kv.set('vocab', vocab);
-const saveClips = () => kv.set('clipList', [...clips]);
-const count = l => samples.reduce((n, s) => n + (s.label === l), 0);
+// ---------- Datos: nube compartida (Supabase) o este navegador ----------
 const setEstado = (el, txt, cls = '') => { el.textContent = txt; el.className = 'estado ' + cls; };
+const store = await crearStore(DEFAULT_VOCAB);
+let vocab = DEFAULT_VOCAB.slice(), samples = [], model = null, clips = new Set(), muestrasCargadas = false;
+let selected = 'hola', tab = 'clase';
+const count = l => samples.reduce((n, s) => n + (s.label === l), 0);
+
+async function cargarTodo() {
+  const est = $('#estadoNube');
+  try {
+    setEstado(est, store.modo === 'nube' ? 'Conectando con las señas del equipo…' : '');
+    [vocab, model, clips] = await Promise.all([store.cargarVocab(), store.cargarModelo(), store.listaVideos().then(l => new Set(l))]);
+    if (!vocab.includes(REPOSO)) vocab.unshift(REPOSO);
+    if (!vocab.includes(selected)) selected = vocab.find(v => v !== REPOSO) || REPOSO;
+    setEstado(est, store.modo === 'nube' ? '☁️ Conectado a las señas del equipo. ' + describeModel() : '💾 Modo local: los datos quedan solo en este navegador (falta configurar Supabase en config.js).', store.modo === 'nube' ? 'ok' : '');
+  } catch (e) { setEstado(est, 'No se pudo conectar con la nube: ' + e.message, 'error'); }
+  if (store.modo === 'local') await cargarMuestras();
+  renderSenas(); renderModelo(); setEstado($('#estadoModelo'), describeModel());
+}
+async function cargarMuestras(forzar = false) {
+  if (muestrasCargadas && !forzar) return;
+  try { samples = await store.cargarMuestras(); muestrasCargadas = true; }
+  catch (e) { setEstado($('#estadoGrab'), 'No se cargaron las muestras: ' + e.message, 'error'); }
+  renderSenas();
+}
+function puedeEscribir(el) {
+  if (store.puedeEscribir()) return true;
+  setEstado(el, 'Escribe la clave del equipo para grabar o cambiar datos. Sin clave, la app solo se usa.', 'error');
+  return false;
+}
 
 // ---------- Cámara y MediaPipe ----------
 const video = $('#video'), canvas = $('#overlay'), ctx = canvas.getContext('2d');
@@ -186,6 +188,7 @@ function speak(t) {
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, escuchando = false, finalTxt = '';
 const queue = []; let playing = false;
+const clipCache = new Map();
 
 if (!SR) setEstado($('#estadoVoz'), 'Este navegador no reconoce voz (usa Chrome o Edge). Puedes escribir la frase.', 'error');
 $('#btnEscuchar').onclick = () => {
@@ -226,7 +229,8 @@ async function playNext() {
   document.querySelectorAll('.ficha.ahora').forEach(f => f.classList.remove('ahora'));
   if (!item) { playing = false; $('#clipLabel').textContent = ''; return; }
   playing = true;
-  const blob = await kv.get('clip:' + item.label);
+  const blob = clipCache.get(item.label) || await store.cargarVideo(item.label).catch(() => null);
+  if (blob) clipCache.set(item.label, blob);
   if (!blob) return playNext();
   document.querySelector(`.ficha[data-i="${item.i}"]`)?.classList.add('ahora');
   if (clip.src) URL.revokeObjectURL(clip.src);
@@ -249,9 +253,11 @@ function needCam() { if (running) return true; setEstado($('#estadoGrab'), 'Prim
 function busy(b) { ['#btnUna', '#btnDiez', '#btnVideo', '#btnBorrarSena', '#btnEntrenar'].forEach(s => $(s).disabled = b); }
 
 async function grabar(n) {
-  if (!needCam()) return;
+  if (!needCam() || !puedeEscribir($('#estadoGrab'))) return;
+  await cargarMuestras();
   busy(true); capturing = true;
   let ok = 0;
+  const nuevas = [];
   try {
     for (let k = 0; k < n; k++) {
       setEstado($('#estadoGrab'), `«${selected}»: muestra ${k + 1} de ${n}. Prepárate…`);
@@ -263,20 +269,24 @@ async function grabar(n) {
       const w = windowFrames(t0, t0 + WIN_MS + 60);
       if (!w) { setEstado($('#estadoGrab'), 'La cámara va lenta; no se guardó.', 'error'); await sleep(900); continue; }
       if (selected !== REPOSO && w.present < 0.5) { setEstado($('#estadoGrab'), 'No vi las manos: muestra no guardada.', 'error'); await sleep(900); continue; }
-      samples.push({ label: selected, x: w.x }); ok++;
+      const s = { label: selected, x: w.x };
+      samples.push(s); nuevas.push(s); ok++;
       renderSenas();
       await sleep(250);
     }
-    await saveSamples();
-    setEstado($('#estadoGrab'), `Listo: ${ok} muestra(s) de «${selected}». Total: ${count(selected)}.`, 'ok');
+    if (nuevas.length) { setEstado($('#estadoGrab'), 'Guardando…'); await store.agregarMuestras(nuevas); }
+    setEstado($('#estadoGrab'), `Listo: ${ok} muestra(s) de «${selected}»${store.modo === 'nube' ? ' guardadas en la nube' : ''}. Total: ${count(selected)}.`, 'ok');
     marcarModeloViejo();
+  } catch (e) {
+    samples = samples.filter(s => !nuevas.includes(s)); renderSenas();
+    setEstado($('#estadoGrab'), 'No se guardó: ' + e.message, 'error');
   } finally { capturing = false; busy(false); $('#cuenta').hidden = true; $('#rec').hidden = true; }
 }
 $('#btnUna').onclick = () => grabar(1);
 $('#btnDiez').onclick = () => grabar(10);
 
 $('#btnVideo').onclick = async () => {
-  if (!needCam()) return;
+  if (!needCam() || !puedeEscribir($('#estadoGrab'))) return;
   if (selected === REPOSO) return setEstado($('#estadoGrab'), '«reposo» no necesita video.', 'error');
   if (!window.MediaRecorder) return setEstado($('#estadoGrab'), 'Este navegador no puede grabar video.', 'error');
   busy(true);
@@ -288,8 +298,10 @@ $('#btnVideo').onclick = async () => {
     const parts = []; mr.ondataavailable = e => e.data.size && parts.push(e.data);
     const done = new Promise(r => mr.onstop = r);
     $('#rec').hidden = false; mr.start(); await sleep(2200); mr.stop(); await done; $('#rec').hidden = true;
-    await kv.set('clip:' + selected, new Blob(parts, { type: mr.mimeType || 'video/webm' }));
-    clips.add(selected); await saveClips();
+    const blob = new Blob(parts, { type: mr.mimeType || 'video/webm' });
+    setEstado($('#estadoGrab'), 'Subiendo video…');
+    await store.guardarVideo(selected, blob);
+    clips.add(selected); clipCache.set(selected, blob);
     renderSenas();
     setEstado($('#estadoGrab'), `Video de «${selected}» guardado. Se verá en el modo Profesor.`, 'ok');
   } catch (e) { setEstado($('#estadoGrab'), 'No se pudo grabar: ' + e.message, 'error'); }
@@ -297,15 +309,23 @@ $('#btnVideo').onclick = async () => {
 };
 
 $('#btnBorrarSena').onclick = async () => {
+  if (!puedeEscribir($('#estadoGrab'))) return;
+  await cargarMuestras();
   const n = count(selected);
-  if (!n || !confirm(`¿Borrar las ${n} muestras de «${selected}»?`)) return;
-  samples = samples.filter(s => s.label !== selected);
-  await saveSamples(); renderSenas(); marcarModeloViejo();
-  setEstado($('#estadoGrab'), `Muestras de «${selected}» borradas.`);
+  if (!n || !confirm(`¿Borrar las ${n} muestras de «${selected}» para todo el equipo?`)) return;
+  try {
+    await store.borrarMuestras(selected);
+    samples = samples.filter(s => s.label !== selected);
+    renderSenas(); marcarModeloViejo();
+    setEstado($('#estadoGrab'), `Muestras de «${selected}» borradas.`);
+  } catch (e) { setEstado($('#estadoGrab'), e.message, 'error'); }
 };
 
 $('#btnEntrenar').onclick = async () => {
   const est = $('#estadoModelo'), bar = $('#progreso');
+  if (!puedeEscribir(est)) return;
+  setEstado(est, 'Bajando todas las muestras del equipo…');
+  await cargarMuestras(true);
   if (!count(REPOSO)) return setEstado(est, 'Graba primero algunas muestras de «reposo» (sin hacer señas).', 'error');
   busy(true);
   try {
@@ -313,7 +333,9 @@ $('#btnEntrenar').onclick = async () => {
       bar.style.width = (s.ep / s.epochs * 100) + '%';
       setEstado(est, `Entrenando… ${s.ep}/${s.epochs} · acierto ${(s.acc * 100).toFixed(0)} %` + (s.vacc != null ? ` · en muestras no vistas ${(s.vacc * 100).toFixed(0)} %` : ''));
     });
-    model = m; await kv.set('model', m);
+    setEstado(est, 'Publicando el modelo para todos…');
+    await store.guardarModelo(m);
+    model = m;
     setEstado(est, describeModel(), 'ok');
     renderModelo();
   } catch (e) { setEstado(est, e.message, 'error'); }
@@ -344,24 +366,34 @@ function renderVocab() {
 }
 $('#vocab').onclick = async e => {
   const v = e.target.dataset?.del; if (!v) return;
-  if (!confirm(`¿Quitar «${v}» con sus muestras y su video?`)) return;
-  vocab = vocab.filter(x => x !== v); samples = samples.filter(s => s.label !== v);
-  clips.delete(v); await kv.del('clip:' + v);
-  if (selected === v) selected = REPOSO;
-  await Promise.all([saveVocab(), saveSamples(), saveClips()]);
-  renderSenas(); marcarModeloViejo();
+  const est = $('#estadoDatos');
+  if (!puedeEscribir(est) || !confirm(`¿Quitar «${v}» con sus muestras y su video, para todo el equipo?`)) return;
+  try {
+    const nuevo = vocab.filter(x => x !== v);
+    await store.borrarMuestras(v);
+    if (clips.has(v)) await store.borrarVideo(v);
+    await store.guardarVocab(nuevo);
+    vocab = nuevo; samples = samples.filter(s => s.label !== v); clips.delete(v);
+    if (selected === v) selected = REPOSO;
+    renderSenas(); marcarModeloViejo();
+  } catch (err) { setEstado(est, err.message, 'error'); }
 };
 $('#formSena').onsubmit = async e => {
   e.preventDefault();
-  const v = $('#nuevaSena').value.trim().toLowerCase(); if (!v) return;
-  if (!vocab.includes(v)) { vocab.push(v); await saveVocab(); }
-  $('#nuevaSena').value = ''; selected = v; renderSenas();
+  const est = $('#estadoDatos');
+  const v = $('#nuevaSena').value.trim().toLowerCase(); if (!v || !puedeEscribir(est)) return;
+  try {
+    if (!vocab.includes(v)) { await store.guardarVocab([...vocab, v]); vocab.push(v); }
+    $('#nuevaSena').value = ''; selected = v; renderSenas();
+    setEstado(est, `«${v}» agregada.`, 'ok');
+  } catch (err) { setEstado(est, err.message, 'error'); }
 };
 
 const blobToData = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); });
 $('#btnExportar').onclick = async () => {
-  const out = { app: 'manos-que-hablan', v: 1, D, vocab, samples: samples.map(s => ({ l: s.label, x: Array.from(s.x, v => Math.round(v * 1000) / 1000) })), clips: {} };
-  if ($('#conVideos').checked) for (const c of clips) { const b = await kv.get('clip:' + c); if (b) out.clips[c] = await blobToData(b); }
+  await cargarMuestras();
+  const out = { app: 'manos-que-hablan', v: 2, D, vocab, samples: samples.map(s => ({ l: s.label, x: f32ToB64(s.x) })), clips: {} };
+  if ($('#conVideos').checked) for (const c of clips) { const b = await store.cargarVideo(c).catch(() => null); if (b) out.clips[c] = await blobToData(b); }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(out)], { type: 'application/json' }));
   a.download = `senas-lsb-${new Date().toISOString().slice(0, 10)}.json`;
@@ -370,24 +402,28 @@ $('#btnExportar').onclick = async () => {
 };
 $('#archivo').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
+  if (!puedeEscribir($('#estadoDatos'))) { e.target.value = ''; return; }
   try {
     const d = JSON.parse(await f.text());
     if (d.app !== 'manos-que-hablan' || d.D !== D) throw new Error('el archivo no es de esta app o de otra versión');
-    for (const v of d.vocab || []) if (!vocab.includes(v)) vocab.push(v);
-    for (const s of d.samples || []) samples.push({ label: s.l, x: Float32Array.from(s.x) });
+    await cargarMuestras();
+    setEstado($('#estadoDatos'), 'Subiendo…');
+    const nuevoVocab = [...vocab, ...(d.vocab || []).filter(v => !vocab.includes(v))];
+    await store.guardarVocab(nuevoVocab); vocab = nuevoVocab;
+    const nuevas = (d.samples || []).map(s => ({ label: s.l, x: typeof s.x === 'string' ? b64ToF32(s.x) : Float32Array.from(s.x) }));
+    await store.agregarMuestras(nuevas); samples.push(...nuevas);
     let nc = 0;
-    for (const [c, url] of Object.entries(d.clips || {})) { await kv.set('clip:' + c, await (await fetch(url)).blob()); clips.add(c); nc++; }
-    await Promise.all([saveVocab(), saveSamples(), saveClips()]);
+    for (const [c, url] of Object.entries(d.clips || {})) { await store.guardarVideo(c, await (await fetch(url)).blob()); clips.add(c); nc++; }
     renderSenas(); marcarModeloViejo();
     setEstado($('#estadoDatos'), `Sumadas ${d.samples?.length || 0} muestras y ${nc} videos. Vuelve a entrenar el modelo.`, 'ok');
   } catch (err) { setEstado($('#estadoDatos'), 'No se pudo importar: ' + err.message, 'error'); }
   e.target.value = '';
 };
 $('#btnReset').onclick = async () => {
-  if (!confirm('¿Borrar TODAS las muestras, videos y el modelo? Exporta antes si quieres conservarlos.')) return;
-  for (const c of clips) await kv.del('clip:' + c);
-  vocab = DEFAULT_VOCAB.slice(); samples = []; model = null; clips = new Set();
-  await Promise.all([saveVocab(), saveSamples(), saveClips(), kv.del('model')]);
+  if (!puedeEscribir($('#estadoDatos'))) return;
+  if (!confirm('¿Borrar TODAS las muestras, videos y el modelo, para todo el equipo? Exporta antes si quieres conservarlos.')) return;
+  try { await store.borrarTodo(); } catch (err) { return setEstado($('#estadoDatos'), err.message, 'error'); }
+  vocab = DEFAULT_VOCAB.slice(); samples = []; model = null; clips = new Set(); clipCache.clear();
   selected = vocab[1]; renderSenas(); renderModelo(); setEstado($('#estadoModelo'), describeModel());
   setEstado($('#estadoDatos'), 'Todo borrado.');
 };
@@ -400,6 +436,7 @@ document.querySelector('.tabs').onclick = e => {
   document.querySelectorAll('[data-panel]').forEach(p => p.hidden = p.dataset.panel !== tab);
   document.querySelector('.grid').classList.toggle('solo-panel', tab === 'datos' || tab === 'profe');
   showBars(null);
+  if (tab === 'entrenar' || tab === 'datos') cargarMuestras();
 };
 
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -415,5 +452,20 @@ sel.onchange = () => {
   if (escuchando) { escuchando = false; rec.stop(); }
 };
 renderRapidas(); pickVoice();
+
+// Clave del equipo (solo en modo nube)
+const zonaClave = $('#zonaClave');
+zonaClave.hidden = store.modo !== 'nube';
+if (store.modo === 'nube') {
+  $('#clave').value = store.clave();
+  const mostrarClave = async () => {
+    if (!store.clave()) return setEstado($('#estadoClave'), 'Sin clave: puedes usar la app, pero no grabar.');
+    try { const ok = await store.probarClave(); setEstado($('#estadoClave'), ok ? '✓ Clave correcta: puedes grabar y entrenar.' : '✗ Clave incorrecta: solo lectura.', ok ? 'ok' : 'error'); }
+    catch (e) { setEstado($('#estadoClave'), e.message, 'error'); }
+  };
+  $('#formClave').onsubmit = e => { e.preventDefault(); store.setClave($('#clave').value); mostrarClave(); };
+  mostrarClave();
+}
+cargarTodo();
 renderSenas(); renderModelo(); renderSentence();
 setEstado($('#estadoModelo'), describeModel());
