@@ -2,6 +2,8 @@ import { FilesetResolver, HandLandmarker, PoseLandmarker } from 'https://cdn.jsd
 import { frameFeat, resample, hasHand, train, predict, matchSigns, norm, WIN_MS, REPOSO, D } from './ml.js';
 import { IDIOMAS, TRAD, traducir, alias } from './idiomas.js';
 import { Avatar } from './avatar.js';
+import { rasgosBase, cargarModeloBase, predecirBase, aToken, PALABRAS_BASE, baseLista } from './lsb.js';
+import { cargarFormas, letrasDe, hayForma, protoLetra } from './dactilologia.js';
 import { crearStore, f32ToB64, b64ToF32 } from './store.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -17,7 +19,8 @@ const MINIMO = 15;          // muestras para considerarla lista
 
 const DEFAULT_VOCAB = [REPOSO, 'hola', 'gracias', 'por favor', 'sí', 'no', 'no entiendo', 'repita', 'más despacio',
   'pregunta', 'ayuda', 'baño', 'dolor', 'agua', 'médico', 'emergencia', 'profesor', 'terminé', 'tarea', 'examen',
-  'escribir', 'leer', 'bien', 'mal', 'perdón', 'qué', 'cómo', 'dónde', 'nombre', 'mamá', 'papá'];
+  'escribir', 'leer', 'bien', 'mal', 'perdón', 'qué', 'cómo', 'dónde', 'nombre', 'mamá', 'papá',
+  ...PALABRAS_BASE.filter(p => !['hola', 'gracias', 'por favor', 'profesor', 'nombre', 'médico'].includes(p))];
 const RAPIDAS = ['no entiendo', 'repita', 'más despacio', 'baño', 'pregunta', 'terminé', 'dolor', 'ayuda', 'gracias'];
 
 // ---------- Utilidades de interfaz ----------
@@ -48,6 +51,7 @@ async function cargarTodo() {
   try {
     [vocab, model, clips] = await Promise.all([store.cargarVocab(), store.cargarModelo(), store.listaVideos().then(l => new Set(l))]);
     if (!vocab.includes(REPOSO)) vocab.unshift(REPOSO);
+    for (const p of PALABRAS_BASE) if (!vocab.includes(p)) vocab.push(p);
     if (!vocab.includes(selected)) selected = vocab.find(v => v !== REPOSO) || REPOSO;
     chip('#chipNube', 'on', store.modo === 'nube' ? 'nube del equipo' : 'este navegador');
   } catch (e) {
@@ -75,7 +79,7 @@ const camEl = $('#tplCam').content.firstElementChild.cloneNode(true);
 $('#slotCamVivo').append(camEl);
 const video = $('#video'), canvas = $('#overlay'), ctx = canvas.getContext('2d');
 let hands = null, pose = null, stream = null, running = false;
-const frames = [];
+const frames = [], framesBase = [];
 let lastPose = null, frameNo = 0, lastVideoTime = -1;
 let fps = 0, fpsN = 0, fpsT = performance.now(), msInf = 0;
 let ultimaMano = 0, ultimaPalabra = 0;
@@ -126,6 +130,9 @@ function loop() {
   const f = frameFeat(hr, lastPose);
   frames.push({ t: now, f });
   while (frames.length && frames[0].t < now - WIN_MS * 1.6) frames.shift();
+  const fb = rasgosBase(hr, lastPose);
+  framesBase.push({ t: now, f: fb.f, m: fb.manos });
+  while (framesBase.length && framesBase[0].t < now - 1600) framesBase.shift();
   if (hasHand(f)) ultimaMano = now;
   draw(hr);
   if (vista === 'vivo' && !capturing) recognize(now);
@@ -177,72 +184,118 @@ function windowFrames(from, to) {
 }
 
 // ---------- Alumno: señas → palabras ----------
-const STABLE = 4;
-let stable = { label: null, n: 0 }, lastEmit = 0, sentence = [], bloqueada = null;
+// Dos reconocedores: el modelo base de LSB (58 señas, siempre disponible) y el modelo del equipo (lo que graben).
+const SOSTENER_MS = 320;
+let stable = { key: null, t0: 0, n: 0 }, lastEmit = 0, sentence = [], bloqueada = null;
 let umbral = Number(leerPref('umbral', 75)) / 100;
+let ultimaBase = null, baseOcupado = false, ultimaConsultaBase = 0;
 
+function nombreToken(tk) {
+  if (tk.tipo === 'palabra') return tr(tk.texto);
+  if (tk.tipo === 'letra') return 'letra ' + tk.texto.toUpperCase();
+  if (tk.tipo === 'numero') return 'número ' + tk.texto;
+  return 'espacio';
+}
+function consultarBase(now) {
+  if (!baseLista() || baseOcupado || now - ultimaConsultaBase < 140) return;
+  const fr = framesBase.filter(x => x.t >= now - 1500);
+  if (fr.length < 8 || fr.filter(x => x.m).length / fr.length < 0.6) return;
+  ultimaConsultaBase = now; baseOcupado = true;
+  predecirBase(fr).then(r => { ultimaBase = { t: performance.now(), r }; }).catch(() => {}).finally(() => { baseOcupado = false; });
+}
+function candidatos(now) {
+  const out = [];
+  if (model) {
+    const w = windowFrames(now - WIN_MS, now);
+    if (w && w.present >= 0.6) for (const { label, p } of predict(model, w.x).slice(0, 3))
+      out.push({ key: 'e:' + label, p, reposo: label === REPOSO, tk: { tipo: 'palabra', texto: label }, fuente: 'equipo' });
+  }
+  if (ultimaBase && now - ultimaBase.t < 450) for (const { clase, p } of ultimaBase.r.slice(0, 3))
+    out.push({ key: 'b:' + clase, p, tk: aToken(clase), fuente: 'LSB' });
+  return out.sort((a, b) => b.p - a.p);
+}
 function recognize(now) {
-  if (!model) return;
+  consultarBase(now);
   const w = windowFrames(now - WIN_MS, now);
   if (!w) return;
-  if (w.present < 0.6) { stable = { label: null, n: 0 }; bloqueada = null; showPred(null); return; }
-  const r = predict(model, w.x);
-  showPred(r);
-  const { label, p } = r[0];
-  if (label === REPOSO) bloqueada = null;
-  if (label === REPOSO || p < umbral) { stable = { label: null, n: 0 }; return; }
-  if (bloqueada && label !== bloqueada) bloqueada = null;
-  if (label === bloqueada) return;
-  stable = stable.label === label ? { label, n: stable.n + 1 } : { label, n: 1 };
-  if (stable.n >= STABLE && now - lastEmit > 700) {
-    lastEmit = now; bloqueada = label; stable = { label: null, n: 0 };
-    frames.length = 0;
-    addWord(label);
+  if (w.present < 0.6) { stable = { key: null, t0: 0, n: 0 }; bloqueada = null; showPred(null); return; }
+  const cs = candidatos(now);
+  showPred(cs);
+  const top = cs[0];
+  if (!top) return;
+  // el modelo del equipo puede decir «no es una seña» con fuerza
+  const reposo = cs.find(c => c.reposo);
+  if (top.reposo || (reposo && reposo.p > 0.85)) { bloqueada = null; stable = { key: null, t0: 0, n: 0 }; return; }
+  if (top.p < umbral) { stable = { key: null, t0: 0, n: 0 }; return; }
+  if (bloqueada && top.key !== bloqueada) bloqueada = null;
+  if (top.key === bloqueada) return;
+  stable = stable.key === top.key ? { ...stable, n: stable.n + 1 } : { key: top.key, t0: now, n: 1 };
+  if (now - stable.t0 >= SOSTENER_MS && stable.n >= 3 && now - lastEmit > 600) {
+    lastEmit = now; bloqueada = top.key; stable = { key: null, t0: 0, n: 0 };
+    frames.length = 0; framesBase.length = 0; ultimaBase = null;
+    addToken(top.tk);
   }
 }
 
 let ultimaBarra = 0;
-function showPred(r) {
+function showPred(cs) {
   const pred = $('#pred'), barras = $('#barras');
-  if (!r) {
+  if (!cs || !cs.length) {
     pred.hidden = true;
-    barras.innerHTML = `<p class="vacio">${model ? (running ? '> esperando manos…' : '> cámara apagada') : '> sin modelo: entrena las señas primero'}</p>`;
+    barras.innerHTML = `<p class="vacio">${running ? (baseLista() || model ? '> esperando manos…' : '> cargando reconocedor…') : '> cámara apagada'}</p>`;
     return;
   }
-  const top = r[0];
-  pred.hidden = top.label === REPOSO;
-  $('#predTxt').textContent = tr(top.label);
-  $('#predPct').textContent = (top.p * 100).toFixed(0) + ' % seguro';
+  const top = cs[0];
+  pred.hidden = !!top.reposo;
+  $('#predTxt').textContent = nombreToken(top.tk);
+  $('#predPct').textContent = `${(top.p * 100).toFixed(0)} % · ${top.fuente}`;
   $('#predAnillo').style.setProperty('--p', (top.p * 100).toFixed(0));
   const now = performance.now();
-  if (now - ultimaBarra < 80) return;
+  if (now - ultimaBarra < 90) return;
   ultimaBarra = now;
-  barras.innerHTML = r.slice(0, 3).map(({ label, p }) =>
-    `<div class="barra"><span class="n">${esc(label === REPOSO ? '· reposo ·' : tr(label))}</span><span class="b"><i style="width:${(p * 100).toFixed(0)}%"></i></span><span class="p">${(p * 100).toFixed(0)}%</span></div>`).join('');
+  const vistos = new Set();
+  barras.innerHTML = cs.filter(c => !vistos.has(nombreToken(c.tk)) && vistos.add(nombreToken(c.tk))).slice(0, 3).map(c =>
+    `<div class="barra"><span class="n">${esc(c.reposo ? '· reposo ·' : nombreToken(c.tk))}</span><span class="b"><i style="width:${(c.p * 100).toFixed(0)}%"></i></span><span class="p">${(c.p * 100).toFixed(0)}%</span></div>`).join('');
 }
 
-function addWord(w) {
-  sentence.push(w); ultimaPalabra = performance.now();
+// Las letras seguidas forman una palabra deletreada (S-E-R-G-I-O → «Sergio»).
+function agrupar(tokens) {
+  const out = [];
+  for (const tk of tokens) {
+    const ult = out[out.length - 1];
+    if (tk.tipo === 'espacio') { if (ult) ult.cerrada = true; continue; }
+    if ((tk.tipo === 'letra' || tk.tipo === 'numero') && ult && ult.tipo === tk.tipo && !ult.cerrada) { ult.texto += tk.texto; continue; }
+    out.push({ ...tk });
+  }
+  return out.map(g => g.tipo === 'letra' ? { ...g, texto: g.texto.charAt(0).toUpperCase() + g.texto.slice(1) } : g);
+}
+const textoGrupo = g => g.tipo === 'palabra' ? tr(g.texto) : g.texto;
+const fraseDe = tokens => agrupar(tokens).map(textoGrupo).join(' ');
+
+function addToken(tk) {
+  sentence.push(tk); ultimaPalabra = performance.now();
   renderSentence();
-  const d = $('#destello'); d.textContent = tr(w); d.classList.remove('on'); void d.offsetWidth; d.classList.add('on');
-  if ($('#modoVoz').value === 'sena') speak(tr(w));
+  const d = $('#destello'); d.textContent = tk.tipo === 'palabra' ? tr(tk.texto) : tk.tipo === 'espacio' ? '␣' : tk.texto.toUpperCase();
+  d.classList.remove('on'); void d.offsetWidth; d.classList.add('on');
+  if ($('#modoVoz').value === 'sena' && tk.tipo === 'palabra') speak(tr(tk.texto));
   if (navigator.vibrate) navigator.vibrate(30);
 }
 function renderSentence() {
   const f = $('#frase');
   f.dir = IDIOMAS[lang].rtl ? 'rtl' : 'ltr';
-  f.innerHTML = sentence.length ? sentence.map(w => `<span class="w" title="${esc(w)}">${esc(tr(w))}</span>`).join('') : '<span class="ph">Haz una seña frente a la cámara…</span>';
+  const gs = agrupar(sentence);
+  f.innerHTML = gs.length ? gs.map(g => `<span class="w ${g.tipo !== 'palabra' ? 'deletreo' : ''}" title="${esc(g.tipo === 'palabra' ? g.texto : 'deletreado')}">${esc(textoGrupo(g))}</span>`).join('') : '<span class="ph">Haz una seña frente a la cámara…</span>';
 }
 function enviar() {
   if (!sentence.length) return;
-  const palabras = sentence.slice();
+  const tokens = sentence.slice();
   sentence = []; renderSentence();
-  addMsg({ quien: 'alumno', palabras });
-  const modo = $('#modoVoz').value;
-  if (modo === 'frase' || (modo === 'sena' && palabras.length > 1)) speak(palabras.map(tr).join(' '));
+  addMsg({ quien: 'alumno', tokens });
+  const modo = $('#modoVoz').value, n = agrupar(tokens).length, deletreo = tokens.some(t => t.tipo !== 'palabra');
+  if (modo === 'frase' || (modo === 'sena' && (n > 1 || deletreo))) speak(fraseDe(tokens));
 }
 $('#btnEnviar').onclick = enviar;
-$('#btnHablar').onclick = () => sentence.length && speak(sentence.map(tr).join(' '));
+$('#btnHablar').onclick = () => sentence.length && speak(fraseDe(sentence));
 $('#btnDeshacer').onclick = () => { sentence.pop(); renderSentence(); };
 $('#btnBorrar').onclick = () => { sentence = []; renderSentence(); };
 $('#umbral').value = Math.round(umbral * 100);
@@ -253,7 +306,7 @@ $('#modoVoz').onchange = e => guardarPref('modoVoz', e.target.value);
 $('#autoEnviar').checked = leerPref('autoEnviar', '1') === '1';
 $('#autoEnviar').onchange = e => guardarPref('autoEnviar', e.target.checked ? '1' : '0');
 function renderRapidas() { $('#rapidas').innerHTML = RAPIDAS.map(t => `<button data-w="${esc(t)}">${esc(tr(t))}</button>`).join(''); }
-$('#rapidas').onclick = e => { const w = e.target.closest('button')?.dataset.w; if (w) { addMsg({ quien: 'alumno', palabras: [w] }); speak(tr(w)); } };
+$('#rapidas').onclick = e => { const w = e.target.closest('button')?.dataset.w; if (w) { addMsg({ quien: 'alumno', tokens: [{ tipo: 'palabra', texto: w }] }); speak(tr(w)); } };
 
 // ---------- Voz ----------
 let voz = null;
@@ -283,12 +336,12 @@ function addMsg(m) {
   $('#chat').insertAdjacentHTML('beforeend', htmlMsg(m, chat.length - 1));
   const c = $('#chat'); c.scrollTop = c.scrollHeight;
 }
-function textoMsg(m) { return m.quien === 'alumno' ? m.palabras.map(tr).join(' ') : m.texto; }
+function textoMsg(m) { return m.quien === 'alumno' ? fraseDe(m.tokens) : m.texto; }
 function htmlMsg(m, i, anim = true) {
     const hora = m.t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const txt = textoMsg(m), rtl = m.quien === 'alumno' ? IDIOMAS[lang].rtl : IDIOMAS[m.idioma]?.rtl;
-    const orig = m.quien === 'alumno' && lang !== 'es' ? `<div class="orig">${esc(m.palabras.join(' '))}</div>` : '';
-    return `<li class="msg ${m.quien}${anim ? '' : ' quieto'}"><div class="quien">${m.quien === 'alumno' ? '🤟 Alumno · señas' : '🎙 Profesor · voz'}<time>${hora}</time><button class="repetir" data-i="${i}" title="${m.quien === 'alumno' ? 'Decir otra vez' : 'Repetir en señas'}">↻</button></div><div class="txt" dir="${rtl ? 'rtl' : 'ltr'}">${esc(txt)}</div>${orig}</li>`;
+    const orig = m.quien === 'alumno' && lang !== 'es' ? `<div class="orig">${esc(agrupar(m.tokens).map(g => g.texto).join(' '))}</div>` : '';
+    return `<li class="msg ${m.quien}${anim ? '' : ' quieto'}"><div class="quien">${m.quien === 'alumno' ? '<svg class="ic"><use href="#i-mano"/></svg>Alumno · señas' : '<svg class="ic"><use href="#i-mic"/></svg>Profesor · voz'}<time>${hora}</time><button class="repetir" data-i="${i}" title="${m.quien === 'alumno' ? 'Decir otra vez' : 'Repetir en señas'}" aria-label="Repetir"><svg class="ic"><use href="#i-repetir"/></svg></button></div><div class="txt" dir="${rtl ? 'rtl' : 'ltr'}">${esc(txt)}</div>${orig}</li>`;
 }
 function renderChat() {
   $('#chatVacio').hidden = chat.length > 0;
@@ -344,10 +397,18 @@ const pendientes = [];
 let fichaBase = 0, actuales = [], idxSena = 0;
 const tieneSena = l => !!(model?.protos?.[l]);
 const ABC = 'abcdefghijklmnñopqrstuvwxyz'.split('');
-// Deletreo (dactilología): para nombres u otras palabras sin seña, si el equipo grabó cada letra.
-function deletrear(palabra) {
-  const letras = palabra.toLowerCase().normalize('NFC').replace(/[^a-zñ]/g, '').split('');
-  return letras.length && letras.every(l => tieneSena(l)) ? letras : null;
+// Deletreo (dactilología LSB): letras grabadas por el equipo si existen; si no, las del abecedario incorporado.
+function senasDeletreo(palabra, i) {
+  const ls = letrasDe(palabra);
+  if (!ls.length) return null;
+  const out = [];
+  for (const L of ls) {
+    const propia = model?.protos?.[L.toLowerCase()];
+    const proto = propia || protoLetra(L);
+    if (!proto) return null;
+    out.push({ label: L, proto, i, letra: true, palabra, dur: 560, gap: 110 });
+  }
+  return out;
 }
 function avisoAvatar(txt, conBoton = false) {
   const a = $('#avisoAvatar');
@@ -358,27 +419,21 @@ function showSigns(text, conSubtitulo = true) {
   const m = matchSigns(text, vocab.filter(v => v.length > 1), alias(lang));   // las letras sueltas solo sirven para deletrear
   if (conSubtitulo) $('#subtitulo').textContent = text;
   const base = fichaBase; fichaBase += m.length;
-  const items = m.map((x, i) => ({ ...x, i: base + i, letras: !x.label || !tieneSena(x.label) ? deletrear(x.text) : null }));
-  const html = items.map(x => {
-    const cls = x.label && tieneSena(x.label) ? 'si' : x.letras ? 'si deletreo' : '';
-    const tit = cls === 'si' ? 'el avatar la hace' : x.letras ? 'se deletrea' : x.label ? 'seña sin entrenar' : 'sin seña: graba la palabra o el abecedario';
+  const items = m.map((x, i) => {
+    const conSena = x.label && tieneSena(x.label);
+    return { ...x, i: base + i, conSena, letras: conSena ? null : senasDeletreo(x.text, base + i) };
+  });
+  $('#fichas').innerHTML = (pendientes.length || avatar.tl ? $('#fichas').innerHTML : '') + items.map(x => {
+    const cls = x.conSena ? 'si' : x.letras ? 'si deletreo' : '';
+    const tit = x.conSena ? 'seña' : x.letras ? 'deletreada en dactilología' : 'sin seña';
     return `<span class="ficha ${cls}" data-i="${x.i}" title="${tit}">${esc(x.text)}</span>`;
   }).join('');
-  $('#fichas').innerHTML = (pendientes.length || avatar.tl ? $('#fichas').innerHTML : '') + html;
-  if (!model) {
-    $('#hudAvatar').textContent = 'sin modelo entrenado';
-    return avisoAvatar('Todavía no hay señas grabadas. Cuando el equipo grabe y entrene las señas en «Entrenar», el avatar las hará aquí.', true);
-  }
   const signs = [];
   for (const x of items) {
-    if (x.label && tieneSena(x.label)) signs.push({ label: x.label, proto: model.protos[x.label], i: x.i });
-    else if (x.letras) for (const l of x.letras) signs.push({ label: l, proto: model.protos[l], i: x.i, letra: true });
+    if (x.conSena) signs.push({ label: x.label, proto: model.protos[x.label], i: x.i });
+    else if (x.letras) signs.push(...x.letras);
   }
-  const faltan = items.filter(x => !(x.label && tieneSena(x.label)) && !x.letras).map(x => x.text);
-  if (!signs.length) {
-    $('#hudAvatar').textContent = 'ninguna seña conocida';
-    return avisoAvatar(`El avatar todavía no conoce: ${faltan.join(', ')}. Grábalas en «Entrenar» (para nombres, graba el abecedario).`, true);
-  }
+  if (!signs.length) { $('#hudAvatar').textContent = 'nada que señar'; return; }
   avisoAvatar('');
   pendientes.push(signs);
   if (!avatar.tl) siguiente();
@@ -389,14 +444,18 @@ function siguiente() {
   actuales = lote; idxSena = 0;
   avatar.play(lote);
 }
-avatar.onSign = label => {
+avatar.onSign = (label, item) => {
   $$('.ficha.ahora').forEach(f => f.classList.remove('ahora'));
   if (!label) { $('#clipLabel').textContent = ''; mostrarVideo(null); return; }
-  const item = actuales[idxSena++];
+  idxSena = actuales.indexOf(item) + 1;
   if (item) $(`.ficha[data-i="${item.i}"]`)?.classList.add('ahora');
-  $('#clipLabel').textContent = item?.letra ? label.toUpperCase() : tr(label);
-  $('#hudAvatar').textContent = `seña ${idxSena}/${actuales.length}`;
-  mostrarVideo(label);
+  if (item?.letra) {
+    const ls = letrasDe(item.palabra), k = actuales.filter(a => a.i === item.i).indexOf(item);
+    $('#clipLabel').innerHTML = ls.map((l, j) => j === k ? `<b>${esc(l)}</b>` : `<span>${esc(l)}</span>`).join('');
+    $('#clipLabel').classList.add('deletreo');
+  } else { $('#clipLabel').textContent = tr(label); $('#clipLabel').classList.remove('deletreo'); }
+  $('#hudAvatar').textContent = `${idxSena}/${actuales.length}`;
+  mostrarVideo(item?.letra ? null : label);
 };
 avatar.onEnd = () => setTimeout(siguiente, 120);
 async function mostrarVideo(label) {
@@ -549,7 +608,7 @@ $('#btnEntrenar').onclick = async () => {
 function renderModelo() {
   const s = model?.stats || {};
   const n = model ? model.labels.filter(l => l !== REPOSO).length : 0;
-  chip('#chipModelo', model ? (modeloViejo ? 'wait' : 'on') : 'off', model ? `${n} señas${s.vacc != null ? ' · ' + Math.round(s.vacc * 100) + ' %' : ''}` : 'sin modelo');
+  chip('#chipModelo', model ? (modeloViejo ? 'wait' : 'on') : 'off', model ? `equipo: ${n} señas${s.vacc != null ? ' · ' + Math.round(s.vacc * 100) + ' %' : ''}` : 'equipo: sin modelo');
   $('#mAcc').textContent = s.vacc != null ? Math.round(s.vacc * 100) + '%' : (model ? Math.round((s.acc || 0) * 100) + '%' : '—');
   $('#mSenas').textContent = model ? n : '—';
   $('#mMuestras').textContent = model ? s.n : '—';
@@ -565,10 +624,11 @@ function renderModelo() {
 function renderChecklist() {
   const senasListas = vocab.filter(v => v !== REPOSO && count(v) >= MINIMO).length;
   const items = [
+    [baseLista(), 'Reconocedor LSB base (58 señas reales) cargado'],
     [running, 'Cámara encendida'],
     ...(store.modo === 'nube' ? [[claveOk, 'Clave del equipo (para grabar en la nube)']] : []),
     [count(REPOSO) >= MINIMO, `«reposo» con ${MINIMO}+ muestras (${count(REPOSO)})`],
-    [senasListas >= 5, `5 señas o más con ${MINIMO}+ muestras (${senasListas})`],
+    [senasListas >= 5, `Señas propias del equipo: 5 o más con ${MINIMO}+ muestras (${senasListas}) (opcional)`],
     [!!model && !modeloViejo, 'Modelo entrenado con las muestras actuales'],
     [(model?.stats?.vacc ?? 0) >= 0.85, 'Acierto de 85 % o más en muestras nuevas'],
     [clips.size >= Math.min(5, senasListas || 5), `Videos de referencia (opcional): ${clips.size}`],
@@ -604,7 +664,7 @@ $('#senas').onclick = e => {
 function renderTabla() {
   const cols = ['en', 'he', 'qu', 'ay', 'gn'];
   $('#tablaVocab').innerHTML = `<thead><tr><th>Seña</th><th>Muestras</th><th>Video</th>${cols.map(c => `<th>${c}</th>`).join('')}<th></th></tr></thead><tbody>` +
-    vocab.map(v => `<tr><td>${esc(v)}</td><td class="num">${count(v)}</td><td>${clips.has(v) ? '🎬' : ''}</td>${cols.map(c => `<td>${esc(v === REPOSO ? '' : (TRAD[v]?.[c] || '—'))}</td>`).join('')}<td>${v === REPOSO ? '' : `<button class="quitar" data-del="${esc(v)}" aria-label="Quitar ${esc(v)}">✕</button>`}</td></tr>`).join('') + '</tbody>';
+    vocab.map(v => `<tr><td>${esc(v)}</td><td class="num">${count(v)}</td><td>${clips.has(v) ? '<svg class="ic"><use href="#i-video"/></svg>' : ''}</td>${cols.map(c => `<td>${esc(v === REPOSO ? '' : (TRAD[v]?.[c] || '—'))}</td>`).join('')}<td>${v === REPOSO ? '' : `<button class="quitar" data-del="${esc(v)}" aria-label="Quitar ${esc(v)}">✕</button>`}</td></tr>`).join('') + '</tbody>';
 }
 $('#tablaVocab').onclick = async e => {
   const v = e.target.closest('.quitar')?.dataset.del; if (!v) return;
@@ -686,8 +746,9 @@ $('#btnReset').onclick = async () => {
 function renderComo() {
   const s = model?.stats || {};
   const datos = [
-    [model ? model.labels.filter(l => l !== REPOSO).length : 0, 'señas que reconoce'],
-    [s.vacc != null ? Math.round(s.vacc * 100) + '%' : '—', 'acierto en muestras nuevas'],
+    [(baseLista() ? 58 : 0) + (model ? model.labels.filter(l => l !== REPOSO).length : 0), 'señas que reconoce'],
+    [39, 'letras y números que el avatar deletrea'],
+    [s.vacc != null ? Math.round(s.vacc * 100) + '%' : '—', 'acierto de las señas del equipo'],
     [running ? Math.round(msInf) + ' ms' : '—', 'por cuadro (cámara + IA)'],
     [Object.keys(IDIOMAS).length, 'idiomas de salida'],
   ];
@@ -759,6 +820,10 @@ function refrescarTodo() {
 renderRapidas(); renderSentence(); renderChat(); refrescarTodo(); dibujarCurva();
 irA(['vivo', 'entrenar', 'datos', 'como'].includes(leerPref('vista', 'vivo')) ? leerPref('vista', 'vivo') : 'vivo');
 cargarTodo();
+cargarFormas();
+chip('#chipLsb', 'wait', 'LSB…');
+cargarModeloBase().then(() => { chip('#chipLsb', 'on', '58 señas LSB'); showPred(null); renderComo(); renderChecklist(); })
+  .catch(e => { console.error(e); chip('#chipLsb', 'err', 'LSB sin cargar'); });
 addEventListener('resize', () => vista === 'entrenar' && dibujarCurva());
 
 // Funciona sin internet después de la primera carga

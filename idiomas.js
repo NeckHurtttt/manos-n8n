@@ -41,16 +41,29 @@ dónde        | where           | איפה            | maypi                | k
 nombre       | name            | שם              | suti                 | suti                | téra
 mamá         | mom             | אמא             | mama                 | tayka               | sy
 papá         | dad             | אבא             | tata                 | tata                | túva
+yo           | I               | אני             | ñuqa                 | naya                | che
+buenos días  | good morning    | בוקר טוב        | allin p'unchay       | suma uru            | mba'éichapa ne pyhareve
+mi           | my              | שלי             | -                    | -                   | che
+es           | is              | -               | -                    | -                   | -
+trabajo      | work            | עבודה           | llank'ay             | irnaqaña            | -
+vivo         | I live          | אני גר          | tiyani               | -                   | aiko
+abogado      | lawyer          | עורך דין        | -                    | -                   | -
+electricista | electrician     | חשמלאי          | -                    | -                   | -
+policía      | police officer  | שוטר            | -                    | -                   | -
+presidente   | president       | נשיא            | -                    | -                   | -
+La Paz       | La Paz          | לה פאס          | Chuqiyapu            | Chuqi Yapu          | -
+Sucre        | Sucre           | סוקרה           | -                    | -                   | -
+Cochabamba   | Cochabamba      | קוצ'במבה        | Quchapampa           | -                   | -
 `;
 const ORDEN = ['es', 'en', 'he', 'qu', 'ay', 'gn'];
 export const TRAD = {};
 for (const linea of T.trim().split('\n')) {
   const c = linea.split('|').map(s => s.trim());
   if (c.length !== 6) continue;
-  TRAD[c[0]] = Object.fromEntries(ORDEN.map((l, i) => [l, c[i]]));
+  TRAD[c[0]] = Object.fromEntries(ORDEN.map((l, i) => [l, c[i]]).filter(([, v]) => v !== '-'));   // «-» = sin traducción: se deja en castellano
 }
 
 export const traducir = (palabra, lang) => (lang === 'es' ? palabra : TRAD[palabra]?.[lang]) || palabra;
 
 // Para el modo Profesor: frases en el idioma elegido que llevan a cada seña.
-export const alias = lang => lang === 'es' ? [] : Object.entries(TRAD).map(([es, t]) => [t[lang], es]);
+export const alias = lang => lang === 'es' ? [] : Object.entries(TRAD).filter(([, t]) => t[lang]).map(([es, t]) => [t[lang], es]);

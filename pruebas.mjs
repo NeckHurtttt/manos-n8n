@@ -1,6 +1,8 @@
 // node pruebas.mjs — prueba el núcleo con manos sintéticas (sin cámara).
 import assert from 'node:assert/strict';
 import { frameFeat, resample, train, predict, matchSigns, D, F, hasHand } from './ml.js';
+import { letrasDe } from './dactilologia.js';
+import { rasgosBase, aToken, CLASES } from './lsb.js';
 
 let fallos = 0;
 const prueba = async (nombre, fn) => { try { await fn(); console.log('✓', nombre); } catch (e) { fallos++; console.log('✗', nombre, '\n ', e.message); } };
@@ -68,6 +70,40 @@ await prueba('texto → señas: frases largas, tildes y plurales', () => {
   const r = matchSigns('¿Qué no entienden? Mañana hay examen y tareas.', v);
   assert.deepEqual(r.map(x => x.label), ['qué', 'no', null, 'mañana', null, 'examen', null, 'tarea']);
   assert.deepEqual(matchSigns('no entiendo', v).map(x => x.label), ['no entiendo']);
+});
+
+await prueba('deletreo: dígrafos CH/LL/RR, Ñ, tildes y números', () => {
+  assert.deepEqual(letrasDe('Sergio'), ['S', 'E', 'R', 'G', 'I', 'O']);
+  assert.deepEqual(letrasDe('Chullpa'), ['CH', 'U', 'LL', 'P', 'A']);
+  assert.deepEqual(letrasDe('perro'), ['P', 'E', 'RR', 'O']);
+  assert.deepEqual(letrasDe('Muñoz'), ['M', 'U', 'Ñ', 'O', 'Z']);
+  assert.deepEqual(letrasDe('José'), ['J', 'O', 'S', 'E']);
+  assert.deepEqual(letrasDe('10'), ['10']);
+  assert.deepEqual(matchSigns('Me llamo Ñusta', ['reposo']).map(x => x.text), ['me', 'llamo', 'ñusta']);
+  assert.deepEqual(letrasDe('205'), ['2', 'O', '5']);
+});
+
+await prueba('LSB base: 138 rasgos con la mano derecha primero (como el autor)', () => {
+  assert.equal(CLASES.length, 58);
+  const der = mano(0.1, 0.4, 0.5), izq = mano(0.9, 0.7, 0.6);
+  const { f, manos } = rasgosBase({ landmarks: [izq, der], handedness: [[{ categoryName: 'Left' }], [{ categoryName: 'Right' }]] }, pose);
+  assert.equal(f.length, 138); assert.equal(manos, 2);
+  // x relativo al mínimo de la mano derecha: algún valor exactamente 0
+  assert.ok(Array.from(f.slice(0, 42)).some(v => v === 0));
+  // distancia de la muñeca derecha a la nariz (0.5, 0.3)
+  assert.ok(Math.abs(f[42] - Math.hypot(0.4 - 0.5, 0.5 - 0.3)) < 1e-6);
+  // ángulos de la pose en [-0.5, 0.5]
+  for (let i = 63; i < 75; i++) assert.ok(f[i] >= -0.5 && f[i] <= 0.5);
+  const sin = rasgosBase({ landmarks: [], handedness: [] }, null);
+  assert.equal(sin.manos, 0); assert.ok(Array.from(sin.f).every(v => v === 0));
+});
+
+await prueba('LSB base: clases a palabras, letras y números', () => {
+  assert.deepEqual(aToken('HOLA'), { tipo: 'palabra', texto: 'hola' });
+  assert.deepEqual(aToken('DOCTOR'), { tipo: 'palabra', texto: 'médico' });
+  assert.deepEqual(aToken('LL'), { tipo: 'letra', texto: 'll' });
+  assert.deepEqual(aToken('7'), { tipo: 'numero', texto: '7' });
+  assert.deepEqual(aToken(' '), { tipo: 'espacio' });
 });
 
 console.log(fallos ? `\n${fallos} prueba(s) fallaron` : '\nTodo bien');

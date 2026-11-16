@@ -23,7 +23,7 @@ export class Avatar {
   hand(proto, k, s) {
     const o = k * F + s * 66;
     if (proto[o + 65] < 0.5) return null;
-    const SW = this.SW, HS = SW * 0.42, [nx, ny] = this.nose;
+    const SW = this.SW, HS = SW * 0.5, [nx, ny] = this.nose;
     const wx = nx - proto[o + 63] * SW, wy = ny + proto[o + 64] * SW;
     const pts = [];
     for (let j = 0; j < 21; j++) pts.push([wx - proto[o + j * 3] * HS, wy + proto[o + j * 3 + 1] * HS]);
@@ -48,14 +48,17 @@ export class Avatar {
     let t = 0;
     keys.push({ t, h: [null, null], label: null });
     t += EDGE_MS;
-    for (const { label, proto } of signs) {
+    let gapPrev = GAP_MS;
+    for (const sg of signs) {
+      const { label, proto } = sg;
+      const paso = (sg.dur || T * FRAME_MS) / T, gap = sg.gap ?? GAP_MS;
       const fr = [];
       for (let k = 0; k < T; k++) fr.push([this.hand(proto, k, 0), this.hand(proto, k, 1)]);
       this.encuadrar(fr);
-      for (const h of fr) { keys.push({ t, h, label }); t += FRAME_MS; }
-      t += GAP_MS - FRAME_MS;
+      for (const h of fr) { keys.push({ t, h, label, sg }); t += paso; }
+      t += gap - paso; gapPrev = gap;
     }
-    t += EDGE_MS - GAP_MS + FRAME_MS;
+    t += EDGE_MS - gapPrev + FRAME_MS;
     keys.push({ t, h: [null, null], label: null });
     // Donde falta una mano, se la lleva abajo (fuera de cuadro) desde su última posición.
     for (const s of [0, 1]) {
@@ -65,7 +68,7 @@ export class Avatar {
       for (let i = keys.length - 1; i >= 0; i--) { const kf = keys[i]; if (kf.h[s]) last = kf.h[s]; else if (!kf['r' + s]) kf['r' + s] = last; }
       for (const kf of keys) if (!kf.h[s]) { const r = kf['r' + s]; kf.h[s] = r ? r.map(([x, y]) => [x, y + this.H * 0.75]) : null; kf['a' + s] = 0; } else kf['a' + s] = 1;
     }
-    this.tl = keys; this.t0 = performance.now(); this.lastLabel = undefined;
+    this.tl = keys; this.t0 = performance.now(); this.lastSg = undefined;
   }
   draw() {
     const r = this.c.getBoundingClientRect();
@@ -95,8 +98,8 @@ export class Avatar {
           hands[s] = A.h[s].map(([ax, ay], j) => [ax + (B.h[s][j][0] - ax) * e, ay + (B.h[s][j][1] - ay) * e]);
           alpha[s] = A['a' + s] + (B['a' + s] - A['a' + s]) * e;
         }
-        const label = (u < 0.5 ? A : B).label;
-        if (label !== this.lastLabel) { this.lastLabel = label; if (label) this.onSign(label); }
+        const K = u < 0.5 ? A : B;
+        if (K.sg !== this.lastSg) { this.lastSg = K.sg; if (K.label) this.onSign(K.label, K.sg); }
       }
     }
 

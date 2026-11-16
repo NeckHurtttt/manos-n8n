@@ -1,4 +1,4 @@
-# Manos que hablan 🤟
+# Manos que hablan
 
 Traductor de **Lengua de Señas Boliviana (LSB)** para el aula, 100 % en el navegador (Abstracthon 2026, track Educación).
 
@@ -36,3 +36,9 @@ Al entrenar, el modelo se publica y cualquiera que abra el link lo recibe al ins
 
 ## Idiomas
 Castellano, inglés y hebreo; quechua, aymara y guaraní en **borrador** (`idiomas.js`, validar con hablantes).
+
+## Reconocimiento LSB incluido
+- **58 señas reales sin entrenar nada**: abecedario (con LL y Ñ), números 1–10 y palabras (hola, buenos días, gracias, por favor, yo, mi, nombre, es, profesor, doctor, abogado, policía, presidente, electricista, trabajo, vivo, La Paz, Sucre, Cochabamba). Modelo Transformer de **Freddy Villca Villegas** — [Proyecto Traductor de la LSB](https://github.com/freddxvill/Proyecto_Traductor_de_la_LSB), licencia MIT (`modelo/LICENCIA-villca.txt`), entrenado con 5800 secuencias. Corre en el navegador con onnxruntime-web; `lsb.js` reproduce su preparación de datos (138 rasgos × 30 cuadros).
+- Las letras seguidas se juntan en palabras (S-E-R-G-I-O → «Sergio»).
+- **Avatar con dactilología**: lo que no tiene seña grabada se deletrea con las formas de mano sacadas con MediaPipe del abecedario LSB del mismo autor (`modelo/abecedario-formas.json`).
+- El modelo del equipo (pestaña Entrenar) se suma para señas nuevas o para afinar.

@@ -206,7 +206,7 @@ export function medoid(xs) {
 }
 
 // ---------- Texto → señas ----------
-export const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+export const norm = s => s.toLowerCase().normalize('NFD').replace(/n\u0303/g, 'ñ').replace(/[\u0300-\u036f]/g, '')
   .replace(/[¿?¡!.,;:"'()«»\-]/g, ' ').replace(/\s+/g, ' ').trim();
 
 // Busca primero las frases más largas del vocabulario (hasta 4 palabras).

@@ -1,6 +1,6 @@
 // Guarda la app y los modelos de MediaPipe para que funcione sin internet.
-const CACHE = 'mqh-v3';
-const APP = ['./', 'index.html', 'style.css', 'app.js', 'ml.js', 'store.js', 'config.js', 'idiomas.js', 'avatar.js', 'icono.svg', 'manifest.webmanifest'];
+const CACHE = 'mqh-v4';
+const APP = ['./', 'index.html', 'style.css', 'app.js', 'ml.js', 'store.js', 'config.js', 'idiomas.js', 'avatar.js', 'lsb.js', 'dactilologia.js', 'icono.svg', 'manifest.webmanifest', 'modelo/abecedario-formas.json', 'modelo/lsb-villca-v4.onnx'];
 const EXTERNOS = ['cdn.jsdelivr.net', 'storage.googleapis.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', e => {

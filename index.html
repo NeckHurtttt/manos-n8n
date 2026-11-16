@@ -15,6 +15,27 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-globo" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></symbol>
+    <symbol id="i-pantalla" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-enviar" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5L4 12z"/></symbol>
+    <symbol id="i-voz" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5v14l-4.5-4.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+    <symbol id="i-deshacer" viewBox="0 0 24 24"><path d="M9 7L4.5 11.5 9 16"/><path d="M5 11.5h9a5 5 0 0 1 0 10h-2"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3z"/></symbol>
+    <symbol id="i-letras" viewBox="0 0 24 24"><path d="M3 18l4.5-12L12 18M4.7 13.5h5.6M14.5 9.5h3.2a2.3 2.3 0 0 1 0 4.5h-3.2zm0 4.5h3.8a2.3 2.3 0 0 1 0 4.5h-3.8z"/></symbol>
+    <symbol id="i-rayo" viewBox="0 0 24 24"><path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/></symbol>
+    <symbol id="i-bajar" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/></symbol>
+    <symbol id="i-subir" viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 19.5h14"/></symbol>
+    <symbol id="i-candado" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></symbol>
+    <symbol id="i-sinred" viewBox="0 0 24 24"><path d="M3 9.5a14 14 0 0 1 18 0M6.5 13a9 9 0 0 1 11 0M10 16.5a3.5 3.5 0 0 1 4 0"/><circle cx="12" cy="19.5" r=".8"/><path d="M4 4l16 16"/></symbol>
+    <symbol id="i-mano" viewBox="0 0 24 24"><path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11.5V5a1.5 1.5 0 0 1 3 0v6.5M14 11.5V6.5a1.5 1.5 0 0 1 3 0V14c0 4-2.6 7-6.5 7-2.4 0-3.9-1.2-5.2-3.2L3.6 15a1.5 1.5 0 0 1 2.5-1.6L8 15.5"/></symbol>
+    <symbol id="i-repetir" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.7L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.7L4 15.5M4 20v-4.5h4.5"/></symbol>
+    <symbol id="i-punto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-cerebro" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2"/><circle cx="6" cy="17" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="18" cy="17" r="2"/><path d="M7.8 7.9l2.5 3M7.8 16.1l2.5-3M13.8 11l2.4-3M13.8 13l2.4 3"/></symbol>
+  </defs>
+</svg>
 <div class="fondo" aria-hidden="true"><div class="rejilla"></div><div class="brillo b1"></div><div class="brillo b2"></div></div>
 
 <header class="top">
@@ -23,17 +44,18 @@
     <span><b>Manos que hablan</b><small>LSB ⇄ voz · IA en tu navegador</small></span>
   </a>
   <nav class="tabs" role="tablist" aria-label="Secciones">
-    <button role="tab" data-view="vivo" aria-selected="true"><i>◉</i>En vivo</button>
-    <button role="tab" data-view="entrenar" aria-selected="false"><i>◇</i>Entrenar</button>
-    <button role="tab" data-view="datos" aria-selected="false"><i>▦</i>Datos</button>
-    <button role="tab" data-view="como" aria-selected="false"><i>?</i>Cómo funciona</button>
+    <button role="tab" data-view="vivo" aria-selected="true"><svg class="ic"><use href="#i-mano"/></svg>En vivo</button>
+    <button role="tab" data-view="entrenar" aria-selected="false"><svg class="ic"><use href="#i-cerebro"/></svg>Entrenar</button>
+    <button role="tab" data-view="datos" aria-selected="false"><svg class="ic"><use href="#i-letras"/></svg>Datos</button>
+    <button role="tab" data-view="como" aria-selected="false"><svg class="ic"><use href="#i-rayo"/></svg>Cómo funciona</button>
   </nav>
   <div class="estado-barra">
+    <span class="chip" id="chipLsb" data-s="off" title="Reconocedor de LSB"><span class="dot"></span><span>LSB…</span></span>
     <span class="chip" id="chipCam" data-s="off" title="Cámara"><span class="dot"></span><span>Cámara</span></span>
-    <span class="chip" id="chipModelo" data-s="off" title="Modelo"><span class="dot"></span><span>Sin modelo</span></span>
+    <span class="chip" id="chipModelo" data-s="off" title="Señas grabadas por el equipo"><span class="dot"></span><span>equipo: sin modelo</span></span>
     <span class="chip" id="chipNube" data-s="off" title="Datos"><span class="dot"></span><span>…</span></span>
-    <label class="idioma" title="Idioma de salida"><span aria-hidden="true">🌐</span><select id="idioma" aria-label="Idioma"></select></label>
-    <button class="icono" id="btnPantalla" title="Pantalla completa (F)" aria-label="Pantalla completa">⛶</button>
+    <label class="idioma" title="Idioma de salida"><svg class="ic"><use href="#i-globo"/></svg><select id="idioma" aria-label="Idioma"></select></label>
+    <button class="icono" id="btnPantalla" title="Pantalla completa (F)" aria-label="Pantalla completa"><svg class="ic"><use href="#i-pantalla"/></svg></button>
   </div>
 </header>
 
@@ -49,9 +71,9 @@
       <div class="barras" id="barras" aria-hidden="true"></div>
       <div class="frase" id="frase" aria-live="polite"></div>
       <div class="acciones">
-        <button class="btn primario" id="btnEnviar" title="Enter">➤ Enviar y decir</button>
-        <button class="btn" id="btnHablar" title="Espacio">🔊 Decir</button>
-        <button class="btn" id="btnDeshacer" title="Retroceso" aria-label="Quitar la última palabra">↶</button>
+        <button class="btn primario" id="btnEnviar" title="Enter"><svg class="ic"><use href="#i-enviar"/></svg>Enviar y decir</button>
+        <button class="btn" id="btnHablar" title="Espacio"><svg class="ic"><use href="#i-voz"/></svg>Decir</button>
+        <button class="btn" id="btnDeshacer" title="Retroceso" aria-label="Quitar la última palabra"><svg class="ic"><use href="#i-deshacer"/></svg></button>
         <button class="btn" id="btnBorrar">Borrar</button>
       </div>
       <details class="ajustes">
@@ -89,10 +111,10 @@
         <div class="esquinas" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       </div>
       <div class="mic-fila">
-        <button class="mic" id="btnEscuchar" aria-pressed="false" title="Micrófono (M)" aria-label="Escuchar al profesor"><span class="ondas"></span><span class="ico">🎙</span></button>
+        <button class="mic" id="btnEscuchar" aria-pressed="false" title="Micrófono (M)" aria-label="Escuchar al profesor"><span class="ondas"></span><svg class="ic"><use href="#i-mic"/></svg></button>
         <form id="formTexto" class="campo">
           <input id="textoManual" placeholder="Habla o escribe una frase…" autocomplete="off" aria-label="Frase del profesor">
-          <button class="btn" aria-label="Mostrar en señas">➤</button>
+          <button class="btn" aria-label="Mostrar en señas"><svg class="ic"><use href="#i-enviar"/></svg></button>
         </form>
       </div>
       <p class="nota" id="estadoVoz"></p>
@@ -120,9 +142,9 @@
         </div>
         <p class="nota" id="selConsejo"></p>
         <div class="acciones">
-          <button class="btn primario" id="btnDiez">● Grabar 10 seguidas</button>
-          <button class="btn" id="btnUna">● Grabar 1</button>
-          <button class="btn" id="btnVideo">🎬 Video de referencia</button>
+          <button class="btn primario" id="btnDiez"><svg class="ic"><use href="#i-punto"/></svg>Grabar 10 seguidas</button>
+          <button class="btn" id="btnUna"><svg class="ic"><use href="#i-punto"/></svg>Grabar 1</button>
+          <button class="btn" id="btnVideo"><svg class="ic"><use href="#i-video"/></svg>Video de referencia</button>
           <button class="btn peligro" id="btnBorrarSena">Borrar muestras</button>
         </div>
         <p class="nota" id="estadoGrab"></p>
@@ -149,7 +171,7 @@
       <article class="card">
         <header class="card-h">
           <div><span class="kicker">Red neuronal</span><h2>Entrenar modelo</h2></div>
-          <button class="btn primario" id="btnEntrenar">⚡ Entrenar</button>
+          <button class="btn primario" id="btnEntrenar"><svg class="ic"><use href="#i-rayo"/></svg>Entrenar</button>
         </header>
         <div class="metricas">
           <div><span class="mono" id="mAcc">—</span><small>acierto en muestras nuevas</small></div>
@@ -175,7 +197,7 @@
         <input id="nuevaSena" placeholder="Nueva seña (ej. «biblioteca»)" autocomplete="off" aria-label="Nueva seña">
         <button class="btn primario">Agregar</button>
       </form>
-      <div class="acciones"><button class="btn" id="btnAbecedario">🔤 Agregar abecedario (para deletrear nombres)</button></div>
+      <div class="acciones"><button class="btn" id="btnAbecedario"><svg class="ic"><use href="#i-letras"/></svg>Agregar abecedario para grabarlo</button></div>
       <div class="tabla-envoltura"><table class="tabla" id="tablaVocab"></table></div>
       <p class="nota" id="estadoDatos"></p>
     </article>
@@ -183,8 +205,8 @@
       <header class="card-h"><div><span class="kicker">Respaldo</span><h2>Exportar e importar</h2></div></header>
       <p class="nota">Al importar, las muestras se <b>suman</b> a las que ya hay: así se juntan las grabaciones de varias personas y el modelo reconoce mejor a gente nueva.</p>
       <div class="acciones">
-        <button class="btn" id="btnExportar">⬇ Exportar .json</button>
-        <label class="btn">⬆ Importar<input type="file" id="archivo" accept=".json,application/json" hidden></label>
+        <button class="btn" id="btnExportar"><svg class="ic"><use href="#i-bajar"/></svg>Exportar .json</button>
+        <label class="btn"><svg class="ic"><use href="#i-subir"/></svg>Importar<input type="file" id="archivo" accept=".json,application/json" hidden></label>
         <label class="check"><input type="checkbox" id="conVideos" checked> Incluir videos</label>
       </div>
       <div class="zona-peligro">
@@ -204,14 +226,18 @@
     <div class="flujo">
       <article class="card paso"><span class="num mono">01</span><h3>La cámara mira</h3><p>MediaPipe encuentra <b>21 puntos por mano</b> y la posición del cuerpo, unas 30 veces por segundo.</p></article>
       <article class="card paso"><span class="num mono">02</span><h3>Se arma el gesto</h3><p>Un segundo de movimiento se convierte en <b>1320 números</b>: la forma de cada mano y dónde está respecto a la cara.</p></article>
-      <article class="card paso"><span class="num mono">03</span><h3>La red decide</h3><p>Una red neuronal entrenada con las grabaciones del equipo reconoce la seña <b>en milisegundos</b>, dentro del navegador.</p></article>
-      <article class="card paso"><span class="num mono">04</span><h3>Habla y responde</h3><p>La seña se dice en voz alta. La voz del profesor se convierte en señas que hace un <b>avatar</b> con el movimiento grabado.</p></article>
+      <article class="card paso"><span class="num mono">03</span><h3>Dos redes deciden</h3><p>Un Transformer entrenado con <b>5800 grabaciones reales de 58 señas LSB</b> y una red propia que aprende las señas que graba el equipo.</p></article>
+      <article class="card paso"><span class="num mono">04</span><h3>Habla y responde</h3><p>La seña se dice en voz alta. La voz del profesor se vuelve señas en un <b>avatar</b>; lo que no tiene seña lo <b>deletrea</b> con el abecedario LSB.</p></article>
     </div>
     <div class="flujo tres">
-      <article class="card"><h3>🔒 Privado</h3><p>El video nunca sale del equipo: solo se comparten las muestras numéricas que graba el equipo.</p></article>
-      <article class="card"><h3>🌐 Seis idiomas</h3><p>Castellano, quechua, aymara, guaraní, inglés y hebreo. Las lenguas originarias están en borrador para validar con hablantes.</p></article>
-      <article class="card"><h3>📶 Sin internet</h3><p>Se instala como app y, después de usarla una vez con internet, sigue funcionando sin conexión: útil si el wifi del evento falla.</p></article>
+      <article class="card"><h3><svg class="ic"><use href="#i-candado"/></svg>Privado</h3><p>El video nunca sale del equipo: solo se comparten las muestras numéricas que graba el equipo.</p></article>
+      <article class="card"><h3><svg class="ic"><use href="#i-globo"/></svg>Seis idiomas</h3><p>Castellano, quechua, aymara, guaraní, inglés y hebreo. Las lenguas originarias están en borrador para validar con hablantes.</p></article>
+      <article class="card"><h3><svg class="ic"><use href="#i-sinred"/></svg>Sin internet</h3><p>Se instala como app y, después de usarla una vez con internet, sigue funcionando sin conexión: útil si el wifi del evento falla.</p></article>
     </div>
+    <article class="card creditos">
+      <span class="kicker">Créditos</span>
+      <p>El reconocedor base de 58 señas y el abecedario LSB son de <b>Freddy Villca Villegas</b>, <a href="https://github.com/freddxvill/Proyecto_Traductor_de_la_LSB" target="_blank" rel="noopener">Proyecto Traductor de la LSB</a> (licencia MIT, 2024). Detección de manos y cuerpo: MediaPipe (Google).</p>
+    </article>
     <article class="card">
       <span class="kicker">En este momento</span>
       <div class="metricas grandes" id="metricasComo"></div>
@@ -235,12 +261,12 @@
     <div class="pred" id="pred" hidden><span class="anillo" id="predAnillo" style="--p:0"></span><span><b id="predTxt"></b><small class="mono" id="predPct"></small></span></div>
     <div class="destello" id="destello"></div>
     <div class="cuenta mono" id="cuenta" hidden></div>
-    <div class="rec mono" id="rec" hidden>● REC</div>
+    <div class="rec mono" id="rec" hidden>REC</div>
   </div>
 </template>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
-<footer class="pie mono">Manos que hablan · Abstracthon 2026 · MediaPipe + red neuronal propia en el navegador · las señas se validan con personas sordas e intérpretes de LSB</footer>
+<footer class="pie mono">Manos que hablan · Abstracthon 2026 · reconocedor LSB de F. Villca (MIT) + red propia · MediaPipe</footer>
 
 <script type="module" src="app.js"></script>
 </body>
