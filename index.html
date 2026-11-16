@@ -70,11 +70,20 @@
       <div id="slotCamVivo" class="slot-cam"></div>
       <div class="barras" id="barras" aria-hidden="true"></div>
       <div class="frase" id="frase" aria-live="polite"></div>
+      <div class="propuesta" id="propuesta" hidden>
+        <span class="kicker">n8n armó la frase · revisala</span>
+        <p id="propTxt" contenteditable="true" spellcheck="false"></p>
+        <div class="acciones">
+          <button class="btn primario" id="propOk" title="Enter"><svg class="ic"><use href="#i-enviar"/></svg>Mandar por n8n</button>
+          <button class="btn" id="propNo">Descartar</button>
+        </div>
+      </div>
       <div class="acciones">
         <button class="btn primario" id="btnEnviar" title="Enter"><svg class="ic"><use href="#i-enviar"/></svg>Enviar y decir</button>
         <button class="btn" id="btnHablar" title="Espacio"><svg class="ic"><use href="#i-voz"/></svg>Decir</button>
         <button class="btn" id="btnDeshacer" title="Retroceso" aria-label="Quitar la última palabra"><svg class="ic"><use href="#i-deshacer"/></svg></button>
         <button class="btn" id="btnBorrar">Borrar</button>
+        <button class="btn peligro" id="btnEmergencia" hidden title="n8n avisa a tu contacto con tu ubicación">Emergencia</button>
       </div>
       <details class="ajustes">
         <summary>Ajustes de reconocimiento</summary>
@@ -90,6 +99,16 @@
         <div><span class="kicker">Conversación</span><h2 id="t-chat">En vivo</h2></div>
         <button class="btn chico" id="btnLimpiarChat">Limpiar</button>
       </header>
+      <div class="puente" id="puente" hidden>
+        <span class="chip" id="chipPuente" data-s="off"><span class="dot"></span><span>n8n</span></span>
+        <span class="mono">Sala <b id="salaCodigo">——————</b></span>
+        <span class="tenue" id="salaEstado">esperando que alguien entre por Telegram</span>
+        <div class="acciones">
+          <button class="btn chico" id="btnInvitar">Invitar por Telegram</button>
+          <button class="btn chico" id="btnResumen">Resumen</button>
+          <button class="btn chico" id="btnNuevaSala">Nueva sala</button>
+        </div>
+      </div>
       <ol class="chat" id="chat" aria-live="polite"></ol>
       <div class="chat-vacio" id="chatVacio">
         <p>El alumno hace señas y el profesor habla. Aquí aparece la conversación, traducida en los dos sentidos.</p>

@@ -1,0 +1,1463 @@
+{
+  "name": "Manos que hablan · Puente n8n",
+  "nodes": [
+    {
+      "id": "d6999533-0e0b-5926-8fc4-ff9ca10266cf",
+      "name": "Página → n8n",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "manos",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "7b6f06ff-87d0-5fcd-b794-1d9cb8c3a5fa"
+    },
+    {
+      "id": "552a153f-11b4-5a27-945c-b20fb5b77193",
+      "name": "Claves",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ⚠️ Llená estas tres claves (las mismas en los dos nodos «Claves»).\nconst cfg = {\n  SUPA_URL: 'https://TU-PROYECTO.supabase.co',\n  SUPA_KEY: 'TU_SERVICE_ROLE_KEY',          // Supabase → Settings → API → service_role (secreta)\n  ANTHROPIC_KEY: 'sk-ant-...',              // console.anthropic.com\n  GROQ_KEY: 'gsk_...',                      // console.groq.com (Whisper gratis, para los audios)\n};\nreturn $input.all().map(i => ({ json: { ...(i.json.body ?? i.json), cfg } }));"
+      }
+    },
+    {
+      "id": "3d66d24a-2357-5799-9b67-49b63b2f0bde",
+      "name": "¿Qué pide la página?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "37b04370-2d2d-55e3-aba7-2e468a80f434",
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "sala",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "sala"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "90244eb7-3865-5f39-ba5f-c5f323919d03",
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "frase",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "frase"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "61929c50-4ecc-5f5e-92ae-5a6e414b642b",
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "enviar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "enviar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "dc04f8f7-eca1-51bb-80fa-e5abbab9e4fc",
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "emergencia",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "emergencia"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "b78ad7af-d6bc-5d0f-91e6-87bf7967720d",
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "resumen",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "resumen"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "745ac075-8972-50d5-9a1d-6fdc0df4823b",
+      "name": "Supabase: abrir sala",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        -40
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const { cfg } = $json;\nconst sb = (metodo, ruta, body, prefer = 'return=representation') => this.helpers.httpRequest({\n  method: metodo, url: `${cfg.SUPA_URL}/rest/v1/${ruta}`, body, json: true,\n  headers: { apikey: cfg.SUPA_KEY, Authorization: `Bearer ${cfg.SUPA_KEY}`, Prefer: prefer },\n});\n\nawait sb('POST', 'salas?on_conflict=codigo', { codigo: $json.sala }, 'resolution=ignore-duplicates,return=minimal');\nconst [s] = await sb('GET', `salas?codigo=eq.${$json.sala}&select=chat_id,nombre`);\nreturn { json: { ok: true, vinculada: !!s?.chat_id, nombre: s?.nombre ?? null } };"
+      }
+    },
+    {
+      "id": "6d262228-c664-51f5-8256-47dc5be47750",
+      "name": "Responder sala",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        920,
+        -40
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "77622ea3-711f-5cde-b63c-3c39118a6273",
+      "name": "IA: señas → frase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        140
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $json.cfg.ANTHROPIC_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "anthropic-beta",
+              "value": "server-side-fallback-2026-07-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-opus-5-5', max_tokens: 1024, output_config: { effort: 'low' }, fallbacks: 'default', system: \"Eres intérprete de Lengua de Señas Boliviana (LSB). Recibes glosas: palabras sueltas en el orden en que se hicieron las señas, sin artículos ni conjugación, a veces deletreadas letra por letra. Devuelve UNA sola frase natural en el idioma pedido, en primera persona, corta, sin inventar datos que no estén en las glosas. Solo la frase, sin comillas ni explicaciones.\", messages: [{ role: 'user', content: `Idioma: ${$json.idioma || 'es'}\\nGlosas: ${($json.glosas || []).join(' ')}` }] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "b5c2e618-c4b0-511c-8c0b-91e917ccee11",
+      "name": "Leer frase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        140
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Saca el texto de la respuesta de Claude (o cae a algo seguro si se negó o falló).\nconst r = $json, prev = $('Claves').item.json;\nconst texto = r.stop_reason === 'refusal' ? '' : (r.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();\nreturn { json: { ...prev, ia: texto } };"
+      }
+    },
+    {
+      "id": "54ee8db9-6d8a-5b21-89ec-253218f07f75",
+      "name": "Responder frase",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1140,
+        140
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ frase: $json.ia || ($json.glosas || []).join(' ') }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "49097ff2-790c-5997-95d1-aeda5a0f1683",
+      "name": "Supabase: guardar y buscar contacto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        320
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const { cfg } = $json;\nconst sb = (metodo, ruta, body, prefer = 'return=representation') => this.helpers.httpRequest({\n  method: metodo, url: `${cfg.SUPA_URL}/rest/v1/${ruta}`, body, json: true,\n  headers: { apikey: cfg.SUPA_KEY, Authorization: `Bearer ${cfg.SUPA_KEY}`, Prefer: prefer },\n});\n\nawait sb('POST', 'mensajes', { sala: $json.sala, dir: 'ida', texto: $json.frase, glosas: $json.glosas || [] }, 'return=minimal');\nconst [s] = await sb('GET', `salas?codigo=eq.${$json.sala}&select=chat_id`);\nreturn { json: { ...$json, chat_id: s?.chat_id ?? null } };"
+      }
+    },
+    {
+      "id": "6d208bec-2934-5dd3-bd3c-7cf5e517b40b",
+      "name": "¿Hay alguien en Telegram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        920,
+        320
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c8c5c5ef-6a1e-556d-9ae5-4f024caaa6b5",
+              "leftValue": "={{ !!$json.chat_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "aefd5849-65f2-5c5d-b465-697ccbe20ca7",
+      "name": "Telegram: mandar frase",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1140,
+        260
+      ],
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=🤟 {{ $json.frase }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Bot de Manos que hablan"
+        }
+      }
+    },
+    {
+      "id": "c0845f85-0668-581e-9c6b-6e1871e26276",
+      "name": "Voz de la frase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        260
+      ],
+      "parameters": {
+        "url": "=https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=es&q={{ encodeURIComponent($('¿Hay alguien en Telegram?').item.json.frase.slice(0, 190)) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "90e0d705-2b4a-5f20-a7d4-8bf4206e0ed3",
+      "name": "Telegram: mandar audio",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1580,
+        260
+      ],
+      "parameters": {
+        "operation": "sendAudio",
+        "chatId": "={{ $('¿Hay alguien en Telegram?').item.json.chat_id }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "title": "Mensaje en señas"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Bot de Manos que hablan"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "90e086f6-d227-5f0c-bff1-d46e5d7a7013",
+      "name": "Responder enviado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1800,
+        260
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":true,\"entregado\":true}",
+        "options": {}
+      }
+    },
+    {
+      "id": "b18fcec7-5a89-5419-aec6-de95dac72040",
+      "name": "Responder sin contacto",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1140,
+        420
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":true,\"entregado\":false}",
+        "options": {}
+      }
+    },
+    {
+      "id": "d26af781-de27-5edb-a691-81db378d7035",
+      "name": "Supabase: contacto de emergencia",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        560
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const { cfg } = $json;\nconst sb = (metodo, ruta, body, prefer = 'return=representation') => this.helpers.httpRequest({\n  method: metodo, url: `${cfg.SUPA_URL}/rest/v1/${ruta}`, body, json: true,\n  headers: { apikey: cfg.SUPA_KEY, Authorization: `Bearer ${cfg.SUPA_KEY}`, Prefer: prefer },\n});\n\nconst [s] = await sb('GET', `salas?codigo=eq.${$json.sala}&select=chat_id`);\nawait sb('POST', 'mensajes', { sala: $json.sala, dir: 'ida', texto: '🚨 EMERGENCIA', glosas: ['ayuda'] }, 'return=minimal');\nreturn { json: { ...$json, chat_id: s?.chat_id ?? null, mapa: $json.lat != null ? `https://maps.google.com/?q=${$json.lat},${$json.lon}` : null } };"
+      }
+    },
+    {
+      "id": "72f1fc5a-97f5-5696-9489-039eac003a30",
+      "name": "Telegram: alerta",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        920,
+        560
+      ],
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=🚨 EMERGENCIA — la persona sorda de la sala {{ $json.sala }} pidió ayuda.\n{{ $json.mapa ? '📍 ' + $json.mapa : 'Sin ubicación.' }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Bot de Manos que hablan"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "1ff4d874-b35b-5148-b716-30a6139ec269",
+      "name": "Telegram: ubicación",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1140,
+        560
+      ],
+      "parameters": {
+        "operation": "sendLocation",
+        "chatId": "={{ $('Supabase: contacto de emergencia').item.json.chat_id }}",
+        "latitude": "={{ $('Supabase: contacto de emergencia').item.json.lat }}",
+        "longitude": "={{ $('Supabase: contacto de emergencia').item.json.lon }}",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Bot de Manos que hablan"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "8cbbb5f6-1c5e-592e-a7a4-5e4df90d7785",
+      "name": "Responder emergencia",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1360,
+        560
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":true}",
+        "options": {}
+      }
+    },
+    {
+      "id": "453831d7-1f3e-510a-b3dc-b4a31117649c",
+      "name": "Supabase: leer conversación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        760
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const { cfg } = $json;\nconst sb = (metodo, ruta, body, prefer = 'return=representation') => this.helpers.httpRequest({\n  method: metodo, url: `${cfg.SUPA_URL}/rest/v1/${ruta}`, body, json: true,\n  headers: { apikey: cfg.SUPA_KEY, Authorization: `Bearer ${cfg.SUPA_KEY}`, Prefer: prefer },\n});\n\nconst ms = await sb('GET', `mensajes?sala=eq.${$json.sala}&dir=in.(ida,vuelta)&select=dir,texto&order=id&limit=200`);\nconst [s] = await sb('GET', `salas?codigo=eq.${$json.sala}&select=chat_id`);\nconst charla = ms.map(m => (m.dir === 'ida' ? 'Persona sorda (señas): ' : 'Persona oyente (voz): ') + m.texto).join('\\n');\nreturn { json: { ...$json, charla, n: ms.length, chat_id: s?.chat_id ?? null } };"
+      }
+    },
+    {
+      "id": "d3094085-3c8e-5afe-8963-cc360b471990",
+      "name": "IA: resumir",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        760
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $json.cfg.ANTHROPIC_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "anthropic-beta",
+              "value": "server-side-fallback-2026-07-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-opus-5-5', max_tokens: 1024, output_config: { effort: 'low' }, fallbacks: 'default', system: \"Resume en español, en 3 a 5 viñetas cortas, una conversación entre una persona sorda (que habló en señas) y una oyente. Di de qué se trató, qué se acordó y qué queda pendiente. Si no hay mensajes, responde 'Sin mensajes todavía.'\", messages: [{ role: 'user', content: $json.charla || '(vacía)' }] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "31735438-32c7-5283-808f-bea0aea106c3",
+      "name": "Leer resumen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        760
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Saca el texto de la respuesta de Claude (o cae a algo seguro si se negó o falló).\nconst r = $json, prev = $('Supabase: leer conversación').item.json;\nconst texto = r.stop_reason === 'refusal' ? '' : (r.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();\nreturn { json: { ...prev, ia: texto } };"
+      }
+    },
+    {
+      "id": "5a61e27a-4910-5969-acc8-5b5369ef3ad5",
+      "name": "Telegram: mandar resumen",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        760
+      ],
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=📝 Resumen de la sala {{ $json.sala }}\n\n{{ $json.ia }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Bot de Manos que hablan"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "80316054-9545-524a-a5bd-c3d361218921",
+      "name": "Responder resumen",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1580,
+        760
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ resumen: $('Leer resumen').item.json.ia || 'Sin mensajes todavía.' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "b26dc43c-4b4a-5556-a53a-5d8637eed4b7",
+      "name": "Telegram → n8n",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        1100
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Bot de Manos que hablan"
+        }
+      },
+      "webhookId": "8ca1cddd-7471-5d47-ac21-5cfc7cc48299"
+    },
+    {
+      "id": "3783c831-0c76-5c6f-9d87-ef44d2cc1729",
+      "name": "Claves (Telegram)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        1100
+      ],
+      "parameters": {
+        "jsCode": "// ⚠️ Llená estas tres claves (las mismas en los dos nodos «Claves»).\nconst cfg = {\n  SUPA_URL: 'https://TU-PROYECTO.supabase.co',\n  SUPA_KEY: 'TU_SERVICE_ROLE_KEY',          // Supabase → Settings → API → service_role (secreta)\n  ANTHROPIC_KEY: 'sk-ant-...',              // console.anthropic.com\n  GROQ_KEY: 'gsk_...',                      // console.groq.com (Whisper gratis, para los audios)\n};\nreturn $input.all().map(i => ({ json: { ...(i.json.body ?? i.json), cfg } }));"
+      }
+    },
+    {
+      "id": "9936df44-ac2a-566a-947c-53b3d906fd2a",
+      "name": "¿Qué mandó?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        440,
+        1100
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "9bed0ee3-55d4-5aa0-bae8-950de454dfba",
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "/start",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "start"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "73b8a8a9-a4de-5da7-958d-2a9a5283d394",
+                    "leftValue": "={{ $json.message.voice?.file_id ?? $json.message.audio?.file_id }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "voz"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "4917d255-299b-58e2-add2-c1b6ca405520",
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "texto"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c5a95907-3a89-5108-9a05-e4738fe05e22",
+      "name": "Supabase: vincular sala",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        940
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const { cfg } = $json;\nconst sb = (metodo, ruta, body, prefer = 'return=representation') => this.helpers.httpRequest({\n  method: metodo, url: `${cfg.SUPA_URL}/rest/v1/${ruta}`, body, json: true,\n  headers: { apikey: cfg.SUPA_KEY, Authorization: `Bearer ${cfg.SUPA_KEY}`, Prefer: prefer },\n});\n\nconst codigo = ($json.message.text.split(/\\s+/)[1] || '').toUpperCase();\nconst nombre = [$json.message.from?.first_name, $json.message.from?.last_name].filter(Boolean).join(' ') || 'Telegram';\nconst r = codigo ? await sb('PATCH', `salas?codigo=eq.${codigo}`, { chat_id: $json.message.chat.id, nombre }) : [];\nconst ok = Array.isArray(r) && r.length > 0;\nif (ok) await sb('POST', 'mensajes', { sala: codigo, dir: 'aviso', texto: `${nombre} entró a la sala por Telegram` }, 'return=minimal');\nreturn { json: { chat_id: $json.message.chat.id, texto: ok\n  ? `✅ Listo, ${nombre}. Estás en la sala ${codigo}.\\nMandame un audio o un texto y la persona sorda lo verá en señas. Lo que ella diga en señas te llega aquí.`\n  : '❌ No encontré esa sala. Abrí el link que te pasaron o escribí /start CODIGO.' } };"
+      }
+    },
+    {
+      "id": "1cb2619e-c7e6-530a-a847-2e5c4f0b6db1",
+      "name": "Telegram: bienvenida",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        920,
+        940
+      ],
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.texto }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Bot de Manos que hablan"
+        }
+      }
+    },
+    {
+      "id": "5f965cc6-1078-543e-b183-03e7be9c7c5e",
+      "name": "Telegram: bajar audio",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        700,
+        1100
+      ],
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.voice?.file_id ?? $json.message.audio?.file_id }}",
+        "download": true,
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Bot de Manos que hablan"
+        }
+      }
+    },
+    {
+      "id": "3f0339ea-f6fb-5da9-aad6-2274cf4be2a7",
+      "name": "Preparar audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        1100
+      ],
+      "parameters": {
+        "jsCode": "\n// Telegram manda .oga; Whisper lo acepta si se llama .ogg\nreturn $input.all().map(i => { i.binary.data.fileName = 'voz.ogg'; i.binary.data.mimeType = 'audio/ogg'; return i; });"
+      }
+    },
+    {
+      "id": "74b69f5f-80d4-57f3-8e8b-c9ecda63af67",
+      "name": "Whisper: audio → texto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        1100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Claves (Telegram)').item.json.cfg.GROQ_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "model",
+              "value": "whisper-large-v3"
+            },
+            {
+              "name": "language",
+              "value": "es"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2a562c3b-2d31-53ee-b5b1-0fbfe05f3311",
+      "name": "Texto del audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        1100
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const t = $('Claves (Telegram)').item.json;\nreturn { json: { cfg: t.cfg, chat_id: t.message.chat.id, texto: ($json.text || '').trim() } };"
+      }
+    },
+    {
+      "id": "15e3b4a3-7a65-5110-8fff-f01800230963",
+      "name": "Texto escrito",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        1280
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return { json: { cfg: $json.cfg, chat_id: $json.message.chat.id, texto: $json.message.text.trim() } };"
+      }
+    },
+    {
+      "id": "fa08fbd3-2a92-5da4-be72-1de367381a19",
+      "name": "Supabase: sala de este chat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        1200
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const { cfg } = $json;\nconst sb = (metodo, ruta, body, prefer = 'return=representation') => this.helpers.httpRequest({\n  method: metodo, url: `${cfg.SUPA_URL}/rest/v1/${ruta}`, body, json: true,\n  headers: { apikey: cfg.SUPA_KEY, Authorization: `Bearer ${cfg.SUPA_KEY}`, Prefer: prefer },\n});\n\nconst [s] = await sb('GET', `salas?chat_id=eq.${$json.chat_id}&select=codigo&order=creado.desc&limit=1`);\nreturn { json: { ...$json, sala: s?.codigo ?? null } };"
+      }
+    },
+    {
+      "id": "17352449-fc0e-5667-89bc-481fe81cca23",
+      "name": "¿Está en una sala?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        1200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c78fb0f1-461e-58a0-9ea9-402d7d303841",
+              "leftValue": "={{ !!$json.sala && !!$json.texto }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "964d2346-f015-5be2-9970-63b0d2548bc8",
+      "name": "IA: texto → señas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2020,
+        1140
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $json.cfg.ANTHROPIC_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "anthropic-beta",
+              "value": "server-side-fallback-2026-07-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-opus-5-5', max_tokens: 1024, output_config: { effort: 'low', format: { type: 'json_schema', schema: {\"type\": \"object\", \"properties\": {\"glosas\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}, \"required\": [\"glosas\"], \"additionalProperties\": false} } }, fallbacks: 'default', system: \"Convierte una frase en español a glosas de Lengua de Señas Boliviana para un avatar: palabras sueltas, en minúsculas, en infinitivo, sin artículos ni preposiciones innecesarias, en el orden en que se señarían. Máximo 12 glosas. Si hay nombres propios, déjalos tal cual.\", messages: [{ role: 'user', content: $json.texto }] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "96c911c9-a5b1-5eaa-97ec-e8206b9b8c60",
+      "name": "Leer glosas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        1140
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const r = $json, prev = $('¿Está en una sala?').item.json;\nlet glosas = [];\ntry { glosas = JSON.parse((r.content || []).filter(b => b.type === 'text').map(b => b.text).join('')).glosas || []; } catch {}\nreturn { json: { ...prev, glosas } };"
+      }
+    },
+    {
+      "id": "c0891715-1ed1-5893-9181-e71d0ccb7617",
+      "name": "Supabase: guardar para la página",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2460,
+        1140
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const { cfg } = $json;\nconst sb = (metodo, ruta, body, prefer = 'return=representation') => this.helpers.httpRequest({\n  method: metodo, url: `${cfg.SUPA_URL}/rest/v1/${ruta}`, body, json: true,\n  headers: { apikey: cfg.SUPA_KEY, Authorization: `Bearer ${cfg.SUPA_KEY}`, Prefer: prefer },\n});\n\nawait sb('POST', 'mensajes', { sala: $json.sala, dir: 'vuelta', texto: $json.texto, glosas: $json.glosas }, 'return=minimal');\nreturn { json: $json };"
+      }
+    },
+    {
+      "id": "86e630bf-59bb-513f-ab70-95cadc58f283",
+      "name": "Telegram: confirmar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2680,
+        1140
+      ],
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=✅ Se lo mostré en señas: «{{ $json.texto }}»",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Bot de Manos que hablan"
+        }
+      }
+    },
+    {
+      "id": "08c9b9f0-4e71-5c1b-b990-a79c9fda60d0",
+      "name": "Telegram: falta sala",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2020,
+        1300
+      ],
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Todavía no estás en ninguna sala. Abrí el link que te pasaron o escribí /start CODIGO.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Bot de Manos que hablan"
+        }
+      }
+    },
+    {
+      "id": "f278eea3-9e41-4396-84a8-f5b9b0c99a73",
+      "name": "Nota 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -260
+      ],
+      "parameters": {
+        "content": "## 1 · Señas → Telegram\nLa página reconoce las señas y manda las palabras sueltas aquí. La IA arma la frase, la persona la revisa, y n8n la guarda en Supabase y la manda por Telegram en texto y voz.\nTambién: abrir sala, emergencia con ubicación y resumen de la charla.",
+        "width": 460,
+        "height": 200,
+        "color": 4
+      }
+    },
+    {
+      "id": "eec67b9d-5636-4cac-b6d6-f8adff1a334c",
+      "name": "Nota 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        860
+      ],
+      "parameters": {
+        "content": "## 2 · Telegram → avatar\nLa persona oyente responde con un audio o un texto. Whisper lo pasa a texto, la IA lo convierte en glosas LSB y n8n lo deja en Supabase. La página lo lee y el avatar lo hace en señas.",
+        "width": 460,
+        "height": 180,
+        "color": 5
+      }
+    }
+  ],
+  "connections": {
+    "Página → n8n": {
+      "main": [
+        [
+          {
+            "node": "Claves",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claves": {
+      "main": [
+        [
+          {
+            "node": "¿Qué pide la página?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Qué pide la página?": {
+      "main": [
+        [
+          {
+            "node": "Supabase: abrir sala",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IA: señas → frase",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase: guardar y buscar contacto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase: contacto de emergencia",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase: leer conversación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: abrir sala": {
+      "main": [
+        [
+          {
+            "node": "Responder sala",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA: señas → frase": {
+      "main": [
+        [
+          {
+            "node": "Leer frase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer frase": {
+      "main": [
+        [
+          {
+            "node": "Responder frase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: guardar y buscar contacto": {
+      "main": [
+        [
+          {
+            "node": "¿Hay alguien en Telegram?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay alguien en Telegram?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: mandar frase",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder sin contacto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: mandar frase": {
+      "main": [
+        [
+          {
+            "node": "Voz de la frase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voz de la frase": {
+      "main": [
+        [
+          {
+            "node": "Telegram: mandar audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: mandar audio": {
+      "main": [
+        [
+          {
+            "node": "Responder enviado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: contacto de emergencia": {
+      "main": [
+        [
+          {
+            "node": "Telegram: alerta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: alerta": {
+      "main": [
+        [
+          {
+            "node": "Telegram: ubicación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: ubicación": {
+      "main": [
+        [
+          {
+            "node": "Responder emergencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: leer conversación": {
+      "main": [
+        [
+          {
+            "node": "IA: resumir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA: resumir": {
+      "main": [
+        [
+          {
+            "node": "Leer resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer resumen": {
+      "main": [
+        [
+          {
+            "node": "Telegram: mandar resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: mandar resumen": {
+      "main": [
+        [
+          {
+            "node": "Responder resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram → n8n": {
+      "main": [
+        [
+          {
+            "node": "Claves (Telegram)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claves (Telegram)": {
+      "main": [
+        [
+          {
+            "node": "¿Qué mandó?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Qué mandó?": {
+      "main": [
+        [
+          {
+            "node": "Supabase: vincular sala",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram: bajar audio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Texto escrito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: vincular sala": {
+      "main": [
+        [
+          {
+            "node": "Telegram: bienvenida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: bajar audio": {
+      "main": [
+        [
+          {
+            "node": "Preparar audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar audio": {
+      "main": [
+        [
+          {
+            "node": "Whisper: audio → texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Whisper: audio → texto": {
+      "main": [
+        [
+          {
+            "node": "Texto del audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Texto del audio": {
+      "main": [
+        [
+          {
+            "node": "Supabase: sala de este chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Texto escrito": {
+      "main": [
+        [
+          {
+            "node": "Supabase: sala de este chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: sala de este chat": {
+      "main": [
+        [
+          {
+            "node": "¿Está en una sala?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Está en una sala?": {
+      "main": [
+        [
+          {
+            "node": "IA: texto → señas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram: falta sala",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA: texto → señas": {
+      "main": [
+        [
+          {
+            "node": "Leer glosas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer glosas": {
+      "main": [
+        [
+          {
+            "node": "Supabase: guardar para la página",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: guardar para la página": {
+      "main": [
+        [
+          {
+            "node": "Telegram: confirmar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

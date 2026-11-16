@@ -5,6 +5,7 @@ import { Avatar } from './avatar.js';
 import { rasgosBase, cargarModeloBase, predecirBase, aToken, PALABRAS_BASE, baseLista } from './lsb.js';
 import { cargarFormas, letrasDe, hayForma, protoLetra } from './dactilologia.js';
 import { crearStore, f32ToB64, b64ToF32 } from './store.js';
+import * as puente from './puente.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -287,13 +288,50 @@ function renderSentence() {
   f.innerHTML = gs.length ? gs.map(g => `<span class="w ${g.tipo !== 'palabra' ? 'deletreo' : ''}" title="${esc(g.tipo === 'palabra' ? g.texto : 'deletreado')}">${esc(textoGrupo(g))}</span>`).join('') : '<span class="ph">Haz una seña frente a la cámara…</span>';
 }
 function enviar() {
+  if (!$('#propuesta').hidden) return confirmarPropuesta();
   if (!sentence.length) return;
   const tokens = sentence.slice();
   sentence = []; renderSentence();
+  if (puente.activo) return proponer(tokens);
   addMsg({ quien: 'alumno', tokens });
   const modo = $('#modoVoz').value, n = agrupar(tokens).length, deletreo = tokens.some(t => t.tipo !== 'palabra');
   if (modo === 'frase' || (modo === 'sena' && (n > 1 || deletreo))) speak(fraseDe(tokens));
 }
+// Con n8n: las señas sueltas («yo dolor cabeza») van a n8n, la IA arma la frase, la persona la revisa y n8n la manda.
+let propuesta = null;
+async function proponer(tokens) {
+  const glosas = agrupar(tokens).map(g => g.texto);
+  propuesta = { tokens, glosas };
+  const caja = $('#propuesta');
+  caja.hidden = false; caja.classList.add('cargando');
+  $('#propTxt').textContent = 'n8n está armando la frase…';
+  try {
+    const r = await puente.armarFrase(glosas, lang);
+    if (propuesta?.tokens !== tokens) return;
+    $('#propTxt').textContent = r.frase || fraseDe(tokens);
+  } catch (e) {
+    $('#propTxt').textContent = fraseDe(tokens);
+    toast('n8n no respondió (' + e.message + '). Podés mandar la frase tal cual.', 'error', 4500);
+  }
+  caja.classList.remove('cargando');
+}
+async function confirmarPropuesta() {
+  if (!propuesta || $('#propuesta').classList.contains('cargando')) return;
+  const frase = $('#propTxt').textContent.trim(), { tokens, glosas } = propuesta;
+  propuesta = null; $('#propuesta').hidden = true;
+  if (!frase) return;
+  const m = { quien: 'alumno', tokens, frase, via: 'n8n' };
+  addMsg(m);
+  if ($('#modoVoz').value !== 'no') speak(frase);
+  try {
+    const r = await puente.enviarFrase(frase, glosas);
+    if (r.entregado === false) toast('Guardado, pero nadie está en la sala de Telegram todavía.', '', 4000);
+  } catch (e) { toast('No se pudo mandar por n8n: ' + e.message, 'error', 4500); }
+}
+$('#propOk').onclick = confirmarPropuesta;
+if (location.hostname === 'localhost') window.mqhPrueba = { seña: w => addToken({ tipo: 'palabra', texto: w }), enviar };
+$('#propNo').onclick = () => { propuesta = null; $('#propuesta').hidden = true; };
+$('#propTxt').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmarPropuesta(); } };
 $('#btnEnviar').onclick = enviar;
 $('#btnHablar').onclick = () => sentence.length && speak(fraseDe(sentence));
 $('#btnDeshacer').onclick = () => { sentence.pop(); renderSentence(); };
@@ -306,7 +344,7 @@ $('#modoVoz').onchange = e => guardarPref('modoVoz', e.target.value);
 $('#autoEnviar').checked = leerPref('autoEnviar', '1') === '1';
 $('#autoEnviar').onchange = e => guardarPref('autoEnviar', e.target.checked ? '1' : '0');
 function renderRapidas() { $('#rapidas').innerHTML = RAPIDAS.map(t => `<button data-w="${esc(t)}">${esc(tr(t))}</button>`).join(''); }
-$('#rapidas').onclick = e => { const w = e.target.closest('button')?.dataset.w; if (w) { addMsg({ quien: 'alumno', tokens: [{ tipo: 'palabra', texto: w }] }); speak(tr(w)); } };
+$('#rapidas').onclick = e => { const w = e.target.closest('button')?.dataset.w; if (w) { addMsg({ quien: 'alumno', tokens: [{ tipo: 'palabra', texto: w }], via: puente.activo ? 'n8n' : null }); speak(tr(w)); if (puente.activo) puente.enviarFrase(tr(w), [w]).catch(e => toast('n8n: ' + e.message, 'error')); } };
 
 // ---------- Voz ----------
 let voz = null;
@@ -336,12 +374,12 @@ function addMsg(m) {
   $('#chat').insertAdjacentHTML('beforeend', htmlMsg(m, chat.length - 1));
   const c = $('#chat'); c.scrollTop = c.scrollHeight;
 }
-function textoMsg(m) { return m.quien === 'alumno' ? fraseDe(m.tokens) : m.texto; }
+function textoMsg(m) { return m.quien === 'alumno' ? (m.frase || fraseDe(m.tokens)) : m.texto; }
 function htmlMsg(m, i, anim = true) {
     const hora = m.t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const txt = textoMsg(m), rtl = m.quien === 'alumno' ? IDIOMAS[lang].rtl : IDIOMAS[m.idioma]?.rtl;
     const orig = m.quien === 'alumno' && lang !== 'es' ? `<div class="orig">${esc(agrupar(m.tokens).map(g => g.texto).join(' '))}</div>` : '';
-    return `<li class="msg ${m.quien}${anim ? '' : ' quieto'}"><div class="quien">${m.quien === 'alumno' ? '<svg class="ic"><use href="#i-mano"/></svg>Alumno · señas' : '<svg class="ic"><use href="#i-mic"/></svg>Profesor · voz'}<time>${hora}</time><button class="repetir" data-i="${i}" title="${m.quien === 'alumno' ? 'Decir otra vez' : 'Repetir en señas'}" aria-label="Repetir"><svg class="ic"><use href="#i-repetir"/></svg></button></div><div class="txt" dir="${rtl ? 'rtl' : 'ltr'}">${esc(txt)}</div>${orig}</li>`;
+    return `<li class="msg ${m.quien}${anim ? '' : ' quieto'}"><div class="quien">${m.quien === 'alumno' ? '<svg class="ic"><use href="#i-mano"/></svg>Alumno · señas' : m.via === 'resumen' ? '<svg class="ic"><use href="#i-cerebro"/></svg>n8n · resumen' : m.via === 'telegram' ? '<svg class="ic"><use href="#i-mic"/></svg>' + esc(m.nombre || 'Telegram') + ' · voz' : '<svg class="ic"><use href="#i-mic"/></svg>Profesor · voz'}${m.via ? `<span class="via">${esc(m.via)}</span>` : ''}<time>${hora}</time><button class="repetir" data-i="${i}" title="${m.quien === 'alumno' ? 'Decir otra vez' : 'Repetir en señas'}" aria-label="Repetir"><svg class="ic"><use href="#i-repetir"/></svg></button></div><div class="txt" dir="${rtl ? 'rtl' : 'ltr'}">${esc(txt)}</div>${orig}</li>`;
 }
 function renderChat() {
   $('#chatVacio').hidden = chat.length > 0;
@@ -392,6 +430,42 @@ $('#formTexto').onsubmit = e => {
 };
 
 const avatar = new Avatar($('#avatar'));
+
+// ---------- Puente n8n: lo que llega de Telegram ----------
+if (puente.activo) {
+  $('#puente').hidden = false; $('#btnEmergencia').hidden = false;
+  let contacto = null;
+  const pintarSala = () => { $('#salaCodigo').textContent = puente.codigo(); };
+  const abrir = () => puente.abrirSala().then(() => chip('#chipPuente', 'ok', 'n8n listo')).catch(e => chip('#chipPuente', 'error', 'n8n sin conexión'));
+  pintarSala(); abrir();
+  const oyente = puente.escuchar({
+    alVincular: s => { contacto = s.nombre || 'Telegram'; $('#salaEstado').textContent = `${contacto} está en la sala`; toast(`${contacto} entró a la sala por Telegram`, 'ok'); },
+    alMensaje: m => {
+      if (m.dir === 'aviso') return toast(m.texto, '', 5000);
+      addMsg({ quien: 'profesor', texto: m.texto, via: 'telegram', nombre: contacto });
+      showSigns(m.glosas?.length ? m.glosas.join(' ') : m.texto, false);
+      $('#subtitulo').textContent = m.texto;
+    },
+    alError: e => chip('#chipPuente', 'error', 'Supabase: ' + e.message),
+  });
+  $('#btnInvitar').onclick = async () => {
+    const link = puente.linkTelegram(), txt = link || `/start ${puente.codigo()}`;
+    try { await navigator.clipboard.writeText(txt); toast(link ? 'Link copiado: mandáselo a la otra persona' : `Copiado. En el bot escribí: /start ${puente.codigo()}`, 'ok', 4500); }
+    catch { toast(txt, '', 8000); }
+  };
+  $('#btnNuevaSala').onclick = () => { puente.nuevaSala(); pintarSala(); contacto = null; $('#salaEstado').textContent = 'esperando que alguien entre por Telegram'; abrir(); oyente?.reiniciar(); };
+  $('#btnResumen').onclick = async () => {
+    toast('n8n está resumiendo la conversación…', '', 2500);
+    try { const r = await puente.resumen(); addMsg({ quien: 'profesor', texto: r.resumen || 'Sin mensajes todavía.', via: 'resumen' }); }
+    catch (e) { toast('Resumen: ' + e.message, 'error'); }
+  };
+  $('#btnEmergencia').onclick = () => {
+    const mandar = (lat, lon) => puente.emergencia(lat, lon).then(() => toast('n8n avisó a tu contacto', 'ok')).catch(e => toast('Emergencia: ' + e.message, 'error'));
+    if (!navigator.geolocation) return mandar(null, null);
+    toast('Buscando tu ubicación…', '', 2000);
+    navigator.geolocation.getCurrentPosition(p => mandar(p.coords.latitude, p.coords.longitude), () => mandar(null, null), { timeout: 8000 });
+  };
+}
 $('#avisoAvatar').onclick = e => { const v = e.target.closest('[data-ir]')?.dataset.ir; if (v) irA(v); };
 const pendientes = [];
 let fichaBase = 0, actuales = [], idxSena = 0;
@@ -805,7 +879,7 @@ function pantallaCompleta() {
 }
 $('#btnPantalla').onclick = pantallaCompleta;
 addEventListener('keydown', e => {
-  if (e.target.closest('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest('input, select, textarea, [contenteditable]') || e.ctrlKey || e.metaKey || e.altKey) return;
   if (vista === 'vivo' && e.code === 'Space') { e.preventDefault(); $('#btnHablar').click(); }
   else if (vista === 'vivo' && e.key === 'Enter') { e.preventDefault(); enviar(); }
   else if (vista === 'vivo' && e.key === 'Backspace') { e.preventDefault(); $('#btnDeshacer').click(); }
