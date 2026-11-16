@@ -294,3 +294,80 @@ input[type=checkbox], input[type=range] { accent-color: var(--cian); }
 .sena-actual.deletreo b { color: #fff; font-size: 1.25em; text-shadow: 0 0 12px var(--violeta); }
 .creditos p { color: var(--tenue); margin: .3rem 0 0; }
 .creditos a { color: var(--cian2); }
+
+/* ========== Colores vivos ========== */
+:root {
+  --bg: #0b0620; --panel: rgba(22, 12, 48, .7); --panel-solido: #170c33; --panel2: rgba(40, 22, 80, .55);
+  --linea: rgba(255, 120, 220, .16); --linea2: rgba(255, 120, 220, .32);
+  --cian: #00e5ff; --cian2: #6ff7ff; --violeta: #b26bff; --rosa: #ff3ea5;
+  --lima: #b6ff3b; --naranja: #ff8a1f; --amarillo: #ffe14d;
+  --ok: #3dff9a; --aviso: #ffd23f; --error: #ff4d6d;
+  --arcoiris: linear-gradient(90deg, #ff3ea5, #ff8a1f, #ffe14d, #b6ff3b, #00e5ff, #b26bff, #ff3ea5);
+  --acento: var(--cian);
+}
+.fondo { background: radial-gradient(1100px 700px at 75% -10%, #3a0f6b 0%, transparent 60%), radial-gradient(900px 600px at 0% 100%, #0b3b5c 0%, transparent 60%), var(--bg); }
+.rejilla { --linea: rgba(255, 62, 165, .22); opacity: .55; }
+.brillo { opacity: .38; animation: flota 16s ease-in-out infinite alternate; }
+.b1 { background: var(--cian); }
+.b2 { background: var(--rosa); }
+.b3 { background: var(--naranja); width: 380px; height: 380px; top: 40%; left: 45%; animation-delay: -5s; opacity: .22; }
+.b4 { background: var(--lima); width: 340px; height: 340px; top: 10%; right: 5%; animation-delay: -9s; opacity: .18; }
+@keyframes flota { to { transform: translate(60px, 40px) scale(1.15); } }
+@media (prefers-reduced-motion: reduce) { .brillo, .titular, .card::before { animation: none !important; } }
+
+/* Barra superior con línea arcoíris */
+.top { background: rgba(11, 6, 32, .75); border-bottom: 0; }
+.top::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--arcoiris); background-size: 200% 100%; animation: corre 6s linear infinite; }
+@keyframes corre { to { background-position: 200% 0; } }
+.marca b { background: linear-gradient(90deg, var(--rosa), var(--amarillo), var(--cian)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* Pestañas: cada una con su color */
+.tabs button[data-view="vivo"] { --c1: #00e5ff; --c2: #3dff9a; }
+.tabs button[data-view="entrenar"] { --c1: #ff3ea5; --c2: #b26bff; }
+.tabs button[data-view="datos"] { --c1: #ff8a1f; --c2: #ffe14d; }
+.tabs button[data-view="como"] { --c1: #b6ff3b; --c2: #00e5ff; }
+.tabs button:hover { color: var(--c1); }
+.tabs button[aria-selected="true"] { color: #12052a; background: linear-gradient(135deg, var(--c1), var(--c2)); box-shadow: 0 0 22px color-mix(in srgb, var(--c1) 55%, transparent); }
+
+/* Tarjetas: borde animado y color propio por columna */
+.card { background: linear-gradient(160deg, color-mix(in srgb, var(--acento) 10%, transparent), transparent 45%), var(--panel); border-color: color-mix(in srgb, var(--acento) 25%, transparent); }
+.card::before { background: linear-gradient(140deg, var(--acento), transparent 30%, transparent 70%, var(--rosa)); opacity: .9; }
+.vivo > .card:nth-child(1) { --acento: #00e5ff; }
+.vivo > .card:nth-child(2) { --acento: #ffe14d; }
+.vivo > .card:nth-child(3) { --acento: #ff3ea5; }
+.entrenar .col > .card:nth-child(odd) { --acento: #ff3ea5; }
+.entrenar .col > .card:nth-child(even) { --acento: #b26bff; }
+.datos > .card:nth-child(1) { --acento: #ff8a1f; }
+.datos > .card:nth-child(2) { --acento: #ffe14d; }
+.flujo .paso:nth-child(4n+1) { --acento: #00e5ff; }
+.flujo .paso:nth-child(4n+2) { --acento: #ff3ea5; }
+.flujo .paso:nth-child(4n+3) { --acento: #ffe14d; }
+.flujo .paso:nth-child(4n+4) { --acento: #b6ff3b; }
+.kicker, .paso .num, .flujo h3 .ic { color: var(--acento); }
+.card:hover { box-shadow: 0 10px 40px rgba(0, 0, 0, .45), 0 0 30px color-mix(in srgb, var(--acento) 22%, transparent); transition: box-shadow .3s; }
+
+/* Botones */
+.btn:hover { border-color: var(--acento, var(--cian)); background: color-mix(in srgb, var(--acento, var(--cian)) 12%, transparent); }
+.btn.primario { color: #12052a; background: linear-gradient(135deg, var(--amarillo), var(--rosa) 55%, var(--violeta)); box-shadow: 0 0 24px rgba(255, 62, 165, .35); }
+.btn.primario:hover { box-shadow: 0 0 34px rgba(255, 62, 165, .6); filter: saturate(1.2); }
+.rapidas button { background: color-mix(in srgb, var(--c, #b26bff) 14%, transparent); border-color: color-mix(in srgb, var(--c, #b26bff) 40%, transparent); }
+.rapidas button:nth-child(5n+1) { --c: #00e5ff; } .rapidas button:nth-child(5n+2) { --c: #ff3ea5; } .rapidas button:nth-child(5n+3) { --c: #ffe14d; } .rapidas button:nth-child(5n+4) { --c: #b6ff3b; } .rapidas button:nth-child(5n+5) { --c: #ff8a1f; }
+.rapidas button:hover { background: color-mix(in srgb, var(--c) 30%, transparent); border-color: var(--c); }
+.mic { background: linear-gradient(135deg, var(--naranja), var(--rosa)); box-shadow: 0 0 26px rgba(255, 62, 165, .5); }
+
+/* Barras, métricas, texto destacado */
+.barra .b i, .progreso div { background: var(--arcoiris); background-size: 400% 100%; }
+.metricas > div:nth-child(3n+1) span { background-image: linear-gradient(135deg, #6ff7ff, #3dff9a); }
+.metricas > div:nth-child(3n+2) span { background-image: linear-gradient(135deg, #ff3ea5, #ffe14d); }
+.metricas > div:nth-child(3n+3) span { background-image: linear-gradient(135deg, #ff8a1f, #b26bff); }
+.frase .w:last-child { color: var(--amarillo); text-shadow: 0 0 18px rgba(255, 225, 77, .55); }
+.titular { background: var(--arcoiris); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; animation: corre 8s linear infinite; }
+.msg.alumno { background: rgba(0, 229, 255, .12); }
+.msg.profesor { background: rgba(255, 62, 165, .12); border-color: rgba(255, 62, 165, .4); }
+.msg.profesor .quien { color: var(--rosa); }
+.ficha.ahora { background: linear-gradient(135deg, var(--rosa), var(--violeta)); color: #fff; }
+.escenario { background: radial-gradient(circle at 50% 35%, #3b1270 0%, #160733 55%, #07021a 100%); }
+.esquinas i { border-color: var(--acento, var(--cian)); }
+.tabla th { background: var(--panel-solido); color: var(--naranja); }
+.tabla tr:hover td { background: rgba(255, 138, 31, .07); }
+.pie { color: var(--tenue); }
