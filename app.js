@@ -1,5 +1,5 @@
 import { FilesetResolver, HandLandmarker, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
-import { frameFeat, resample, hasHand, train, predict, matchSigns, WIN_MS, REPOSO, D } from './ml.js';
+import { frameFeat, resample, hasHand, train, predict, matchSigns, norm, WIN_MS, REPOSO, D } from './ml.js';
 import { IDIOMAS, TRAD, traducir, alias } from './idiomas.js';
 import { Avatar } from './avatar.js';
 import { crearStore, f32ToB64, b64ToF32 } from './store.js';
@@ -339,18 +339,47 @@ $('#formTexto').onsubmit = e => {
 };
 
 const avatar = new Avatar($('#avatar'));
+$('#avisoAvatar').onclick = e => { const v = e.target.closest('[data-ir]')?.dataset.ir; if (v) irA(v); };
 const pendientes = [];
 let fichaBase = 0, actuales = [], idxSena = 0;
 const tieneSena = l => !!(model?.protos?.[l]);
+const ABC = 'abcdefghijklmnñopqrstuvwxyz'.split('');
+// Deletreo (dactilología): para nombres u otras palabras sin seña, si el equipo grabó cada letra.
+function deletrear(palabra) {
+  const letras = palabra.toLowerCase().normalize('NFC').replace(/[^a-zñ]/g, '').split('');
+  return letras.length && letras.every(l => tieneSena(l)) ? letras : null;
+}
+function avisoAvatar(txt, conBoton = false) {
+  const a = $('#avisoAvatar');
+  a.hidden = !txt;
+  if (txt) a.innerHTML = `<p>${esc(txt)}</p>${conBoton ? '<button class="btn chico" data-ir="entrenar">Ir a Entrenar</button>' : ''}`;
+}
 function showSigns(text, conSubtitulo = true) {
-  const m = matchSigns(text, vocab, alias(lang));
+  const m = matchSigns(text, vocab.filter(v => v.length > 1), alias(lang));   // las letras sueltas solo sirven para deletrear
   if (conSubtitulo) $('#subtitulo').textContent = text;
   const base = fichaBase; fichaBase += m.length;
-  const html = m.map((x, i) => `<span class="ficha ${x.label && tieneSena(x.label) ? 'si' : ''}" data-i="${base + i}" title="${x.label ? (tieneSena(x.label) ? 'el avatar la hace' : 'seña sin entrenar') : 'sin seña en el vocabulario'}">${esc(x.text)}</span>`).join('');
+  const items = m.map((x, i) => ({ ...x, i: base + i, letras: !x.label || !tieneSena(x.label) ? deletrear(x.text) : null }));
+  const html = items.map(x => {
+    const cls = x.label && tieneSena(x.label) ? 'si' : x.letras ? 'si deletreo' : '';
+    const tit = cls === 'si' ? 'el avatar la hace' : x.letras ? 'se deletrea' : x.label ? 'seña sin entrenar' : 'sin seña: graba la palabra o el abecedario';
+    return `<span class="ficha ${cls}" data-i="${x.i}" title="${tit}">${esc(x.text)}</span>`;
+  }).join('');
   $('#fichas').innerHTML = (pendientes.length || avatar.tl ? $('#fichas').innerHTML : '') + html;
-  if (!model) { $('#hudAvatar').textContent = 'sin modelo entrenado'; return; }
-  const signs = m.map((x, i) => ({ ...x, i: base + i })).filter(x => x.label && tieneSena(x.label)).map(x => ({ label: x.label, proto: model.protos[x.label], i: x.i }));
-  if (!signs.length) { $('#hudAvatar').textContent = 'ninguna seña conocida'; return; }
+  if (!model) {
+    $('#hudAvatar').textContent = 'sin modelo entrenado';
+    return avisoAvatar('Todavía no hay señas grabadas. Cuando el equipo grabe y entrene las señas en «Entrenar», el avatar las hará aquí.', true);
+  }
+  const signs = [];
+  for (const x of items) {
+    if (x.label && tieneSena(x.label)) signs.push({ label: x.label, proto: model.protos[x.label], i: x.i });
+    else if (x.letras) for (const l of x.letras) signs.push({ label: l, proto: model.protos[l], i: x.i, letra: true });
+  }
+  const faltan = items.filter(x => !(x.label && tieneSena(x.label)) && !x.letras).map(x => x.text);
+  if (!signs.length) {
+    $('#hudAvatar').textContent = 'ninguna seña conocida';
+    return avisoAvatar(`El avatar todavía no conoce: ${faltan.join(', ')}. Grábalas en «Entrenar» (para nombres, graba el abecedario).`, true);
+  }
+  avisoAvatar('');
   pendientes.push(signs);
   if (!avatar.tl) siguiente();
 }
@@ -365,7 +394,7 @@ avatar.onSign = label => {
   if (!label) { $('#clipLabel').textContent = ''; mostrarVideo(null); return; }
   const item = actuales[idxSena++];
   if (item) $(`.ficha[data-i="${item.i}"]`)?.classList.add('ahora');
-  $('#clipLabel').textContent = tr(label);
+  $('#clipLabel').textContent = item?.letra ? label.toUpperCase() : tr(label);
   $('#hudAvatar').textContent = `seña ${idxSena}/${actuales.length}`;
   mostrarVideo(label);
 };
@@ -599,6 +628,15 @@ $('#formSena').onsubmit = async e => {
     $('#nuevaSena').value = ''; selected = v;
     toast(`«${v}» agregada. Grábala en «Entrenar».`, 'ok');
   } catch (err) { toast(err.message, 'error'); }
+  refrescarTodo();
+};
+
+$('#btnAbecedario').onclick = async () => {
+  if (!puedeEscribir()) return;
+  const nuevas = ABC.filter(l => !vocab.includes(l));
+  if (!nuevas.length) return toast('El abecedario ya está en el vocabulario.');
+  try { await store.guardarVocab([...vocab, ...nuevas]); vocab.push(...nuevas); toast(`Agregadas ${nuevas.length} letras. Grábalas en «Entrenar» para deletrear nombres.`, 'ok', 4500); }
+  catch (err) { toast(err.message, 'error'); }
   refrescarTodo();
 };
 

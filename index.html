@@ -84,6 +84,7 @@
         <canvas id="avatar" aria-label="Avatar que hace las señas"></canvas>
         <video id="clip" class="pip" playsinline muted hidden disablepictureinpicture></video>
         <div class="sena-actual" id="clipLabel"></div>
+        <div class="aviso-avatar" id="avisoAvatar" hidden></div>
         <div class="subtitulo" id="subtitulo" aria-live="polite"></div>
         <div class="esquinas" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       </div>
@@ -174,6 +175,7 @@
         <input id="nuevaSena" placeholder="Nueva seña (ej. «biblioteca»)" autocomplete="off" aria-label="Nueva seña">
         <button class="btn primario">Agregar</button>
       </form>
+      <div class="acciones"><button class="btn" id="btnAbecedario">🔤 Agregar abecedario (para deletrear nombres)</button></div>
       <div class="tabla-envoltura"><table class="tabla" id="tablaVocab"></table></div>
       <p class="nota" id="estadoDatos"></p>
     </article>
