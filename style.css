@@ -16,6 +16,7 @@
   --cam: #000; --shadow: 0 8px 24px rgba(0,0,0,.4);
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--ink); font: 17px/1.5 "Atkinson Hyperlegible", system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
 h1, h2, h3 { font-family: Fraunces, Georgia, serif; line-height: 1.15; margin: 0 0 .5rem; }

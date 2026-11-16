@@ -20,7 +20,7 @@ if (!IDIOMAS[lang]) lang = 'es';
 const tr = w => traducir(w, lang);
 
 // ---------- Datos: nube compartida (Supabase) o este navegador ----------
-const setEstado = (el, txt, cls = '') => { el.textContent = txt; el.className = 'estado ' + cls; };
+const setEstado = (el, txt, cls = '') => { el.textContent = txt; el.classList.remove('ok', 'error'); if (cls) el.classList.add(cls); };
 const store = await crearStore(DEFAULT_VOCAB);
 let vocab = DEFAULT_VOCAB.slice(), samples = [], model = null, clips = new Set(), muestrasCargadas = false;
 let selected = 'hola', tab = 'clase';
@@ -118,20 +118,25 @@ function windowFrames(from, to) {
 // ---------- Reconocimiento (Alumno) ----------
 const STABLE = 4;
 let stable = { label: null, n: 0 }, lastEmit = { label: null, t: 0 }, sentence = [];
+let bloqueada = null; // la última seña no se repite hasta soltarla (bajar la mano o hacer otra)
 let umbral = 0.75;
 
 function recognize(now) {
   if (!model) return;
   const w = windowFrames(now - WIN_MS, now);
-  if (!w || w.present < 0.6) { stable = { label: null, n: 0 }; showBars(null); return; }
+  if (!w) return; // pocos cuadros todavía (p. ej. justo después de reconocer una seña)
+  if (w.present < 0.6) { stable = { label: null, n: 0 }; bloqueada = null; showBars(null); return; }
   const r = predict(model, w.x);
   showBars(r);
   const { label, p } = r[0];
+  if (label === REPOSO) bloqueada = null;
   if (label === REPOSO || p < umbral) { stable = { label: null, n: 0 }; return; }
+  if (bloqueada && label !== bloqueada) bloqueada = null;
+  if (label === bloqueada) return;
   stable = stable.label === label ? { label, n: stable.n + 1 } : { label, n: 1 };
-  const repetida = lastEmit.label === label && now - lastEmit.t < 1800;
-  if (stable.n >= STABLE && !repetida && now - lastEmit.t > 700) {
+  if (stable.n >= STABLE && now - lastEmit.t > 700) {
     lastEmit = { label, t: now };
+    bloqueada = label;
     stable = { label: null, n: 0 };
     frames.length = 0;
     addWord(label);
