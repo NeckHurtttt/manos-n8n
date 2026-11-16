@@ -821,9 +821,20 @@ renderRapidas(); renderSentence(); renderChat(); refrescarTodo(); dibujarCurva()
 irA(['vivo', 'entrenar', 'datos', 'como'].includes(leerPref('vista', 'vivo')) ? leerPref('vista', 'vivo') : 'vivo');
 cargarTodo();
 cargarFormas();
-chip('#chipLsb', 'wait', 'LSB…');
-cargarModeloBase().then(() => { chip('#chipLsb', 'on', '58 señas LSB'); showPred(null); renderComo(); renderChecklist(); })
-  .catch(e => { console.error(e); chip('#chipLsb', 'err', 'LSB sin cargar'); });
+async function iniciarLsb(intentos = 3) {
+  chip('#chipLsb', 'wait', 'LSB…');
+  for (let k = 1; k <= intentos; k++) {
+    try {
+      await cargarModeloBase();
+      chip('#chipLsb', 'on', '58 señas LSB'); showPred(null); renderComo(); renderChecklist();
+      return;
+    } catch (e) { console.warn('LSB intento', k, e?.message || e); await sleep(1500 * k); }
+  }
+  chip('#chipLsb', 'err', 'LSB: reintentar');
+}
+$('#chipLsb').style.cursor = 'pointer';
+$('#chipLsb').onclick = () => !baseLista() && iniciarLsb();
+iniciarLsb();
 addEventListener('resize', () => vista === 'entrenar' && dibujarCurva());
 
 // Funciona sin internet después de la primera carga
