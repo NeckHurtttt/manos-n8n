@@ -62,12 +62,13 @@ button, input, select { font: inherit; color: inherit; }
 main { padding: clamp(16px, 2.2vw, 28px) clamp(16px, 3vw, 32px) 2rem; max-width: 1680px; margin: 0 auto; }
 .vista { animation: aparece .35s ease-out; }
 @keyframes aparece { from { opacity: 0; transform: translateY(6px); } }
-.vivo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, .62fr) minmax(0, 1.25fr); gap: clamp(14px, 1.6vw, 22px); align-items: start; }
+.vivo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(14px, 1.6vw, 22px); align-items: stretch; }
 .entrenar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(14px, 1.6vw, 22px); align-items: start; }
 .entrenar .col { display: grid; gap: clamp(14px, 1.6vw, 22px); min-width: 0; }
 .datos { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: clamp(14px, 1.6vw, 22px); align-items: start; }
 .como { display: grid; gap: clamp(14px, 1.6vw, 22px); max-width: 1200px; margin: 0 auto; }
-@media (max-width: 1240px) { .vivo { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .chat-card { grid-column: 1 / -1; order: 3; position: static !important; max-height: 60vh !important; } }
+.vivo > .chat-card { grid-column: 1 / -1; order: 3; position: static; min-height: 220px; max-height: 42vh; }
+@media (max-width: 1240px) { .chat-card { grid-column: 1 / -1; order: 3; position: static !important; max-height: 60vh !important; } }
 @media (max-width: 900px) { .vivo, .entrenar, .datos { grid-template-columns: 1fr; } .chat-card { order: 0; } .estado-barra { margin-left: 0; } }
 
 /* ---------- Tarjetas ---------- */
