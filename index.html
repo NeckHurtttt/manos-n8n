@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manos que hablan</title>
+<meta name="description" content="Traductor de Lengua de Señas Boliviana en el navegador: señas a voz y voz a señas para el aula.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🤟%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fraunces:opsz,wght@9..144,600;9..144,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="marca">
+    <span class="logo" aria-hidden="true">🤟</span>
+    <div>
+      <h1>Manos que hablan</h1>
+      <p class="lema">Lengua de Señas Boliviana ↔ voz, en el aula</p>
+    </div>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="clase" aria-selected="true">Alumno <small>señas → voz</small></button>
+    <button role="tab" data-tab="profe">Profesor <small>voz → señas</small></button>
+    <button role="tab" data-tab="entrenar">Entrenar</button>
+    <button role="tab" data-tab="datos">Datos</button>
+  </nav>
+</header>
+
+<main class="grid">
+  <!-- Cámara compartida -->
+  <section class="cam-panel" id="camPanel">
+    <div class="cam">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div class="cam-vacia" id="camVacia">
+        <p>La cámara sigue tus manos y tu cuerpo. Nada sale de este equipo.</p>
+        <button class="btn grande" id="btnCam">Encender cámara</button>
+        <p class="estado" id="estadoCam"></p>
+      </div>
+      <div class="cuenta" id="cuenta" hidden></div>
+      <div class="rec" id="rec" hidden>● grabando</div>
+    </div>
+    <div class="barras" id="barras" aria-live="off"></div>
+  </section>
+
+  <!-- ALUMNO -->
+  <section class="panel" data-panel="clase">
+    <div class="sin-modelo" id="sinModelo">
+      <h2>Primero, enseñale las señas</h2>
+      <ol>
+        <li>Ve a <b>Entrenar</b> y graba cada seña unas 15 a 20 veces, con alguien que sepa LSB.</li>
+        <li>Graba también <b>«reposo»</b>: manos quietas, acomodarse o rascarse, para que la app sepa cuándo no hay seña.</li>
+        <li>Pulsa <b>Entrenar modelo</b> y vuelve aquí.</li>
+      </ol>
+    </div>
+    <div class="frase" id="frase" aria-live="polite"><span class="ph">Las señas reconocidas aparecen aquí…</span></div>
+    <div class="fila">
+      <button class="btn grande" id="btnHablar">🔊 Decir en voz alta</button>
+      <button class="btn" id="btnDeshacer">↶ Quitar última</button>
+      <button class="btn" id="btnBorrar">Borrar</button>
+    </div>
+    <div class="fila opciones">
+      <label><input type="checkbox" id="autoVoz" checked> Decir cada seña al reconocerla</label>
+      <label>Seguridad mínima <input type="range" id="umbral" min="50" max="95" value="75"> <output id="umbralTxt">75 %</output></label>
+    </div>
+    <h3>Frases rápidas</h3>
+    <div class="rapidas" id="rapidas"></div>
+  </section>
+
+  <!-- PROFESOR -->
+  <section class="panel" data-panel="profe" hidden>
+    <p class="nota">El profesor habla y el alumno sordo ve <b>subtítulos</b> y el <b>video de cada seña</b> que la app conoce.</p>
+    <div class="fila">
+      <button class="btn grande" id="btnEscuchar">🎙️ Escuchar</button>
+      <form id="formTexto" class="texto-manual">
+        <input id="textoManual" placeholder="…o escribe una frase" autocomplete="off">
+        <button class="btn">Mostrar</button>
+      </form>
+    </div>
+    <p class="estado" id="estadoVoz"></p>
+    <div class="subtitulo" id="subtitulo" aria-live="polite"><span class="ph">Subtítulos en vivo</span></div>
+    <div class="reproductor">
+      <video id="clip" playsinline muted></video>
+      <div class="clip-label" id="clipLabel"></div>
+    </div>
+    <div class="fichas" id="fichas"></div>
+  </section>
+
+  <!-- ENTRENAR -->
+  <section class="panel" data-panel="entrenar" hidden>
+    <p class="nota">Elige una seña y grábala. Cada muestra dura <b>1 segundo</b> después de la cuenta regresiva. Varía un poco la posición y la distancia; si pueden, que graben varias personas.</p>
+    <div class="senas" id="senas"></div>
+    <div class="fila">
+      <button class="btn grande" id="btnUna">Grabar 1</button>
+      <button class="btn grande" id="btnDiez">Grabar 10 seguidas</button>
+      <button class="btn" id="btnVideo">🎬 Video de referencia</button>
+      <button class="btn peligro" id="btnBorrarSena">Borrar muestras</button>
+    </div>
+    <p class="estado" id="estadoGrab"></p>
+    <div class="entreno">
+      <button class="btn grande primario" id="btnEntrenar">Entrenar modelo</button>
+      <div class="progreso"><div id="progreso"></div></div>
+      <p class="estado" id="estadoModelo"></p>
+    </div>
+  </section>
+
+  <!-- DATOS -->
+  <section class="panel" data-panel="datos" hidden>
+    <h2>Vocabulario</h2>
+    <form id="formSena" class="texto-manual">
+      <input id="nuevaSena" placeholder="Nueva seña (ej. «biblioteca»)" autocomplete="off">
+      <button class="btn">Agregar</button>
+    </form>
+    <ul class="vocab" id="vocab"></ul>
+    <h2>Compartir datos</h2>
+    <p class="nota">Exporta las muestras para juntar las de varias personas: al importar se <b>suman</b>. Así el modelo reconoce mejor a gente nueva.</p>
+    <div class="fila">
+      <button class="btn" id="btnExportar">Exportar (.json)</button>
+      <label class="btn">Importar <input type="file" id="archivo" accept=".json,application/json" hidden></label>
+      <label><input type="checkbox" id="conVideos" checked> Incluir videos</label>
+    </div>
+    <div class="fila">
+      <button class="btn peligro" id="btnReset">Borrar todo</button>
+    </div>
+    <p class="estado" id="estadoDatos"></p>
+  </section>
+</main>
+
+<footer class="pie">Funciona sin servidor: MediaPipe en el navegador · Las señas deben grabarse y validarse con personas sordas o intérpretes de LSB.</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
